@@ -74,6 +74,19 @@ def now() -> int:
     return int(time.time())
 
 
+# One-line entry descriptions live in the allowlist `note` column.
+MAX_NOTE_CHARS = 255
+
+
+def clean_note(text):
+    """Sanitize a one-line description: printable, trimmed, capped.
+    Empty or whitespace-only becomes None."""
+    if not text:
+        return None
+    text = _printable(str(text)).strip()
+    return text[:MAX_NOTE_CHARS].strip() or None
+
+
 # Nullable columns added to `allowlist` after the first release. CREATE TABLE
 # IF NOT EXISTS never alters an existing table, so a database from an earlier
 # install would be missing these; every query that names them would then throw
@@ -221,12 +234,23 @@ def import_list_file(conn, path, tlds, blocked, psl, created_by, source, note):
     Returns (added, skipped).
     """
     entries = []
+    section = None
     with open(path, "r", encoding="utf-8") as fh:
-        for lineno, line in enumerate(fh, 1):
-            line = line.split("#", 1)[0].strip()
-            if not line:
+        for lineno, raw in enumerate(fh, 1):
+            stripped = raw.strip()
+            if not stripped:
                 continue
-            parts = line.split()
+            if stripped.startswith("#"):
+                # The nearest preceding comment line describes the entries
+                # under it — the shipped lists are organised exactly so.
+                text = stripped.lstrip("#").strip().strip("-").strip()
+                if text:
+                    section = text
+                continue
+            body, _, inline = stripped.partition("#")
+            parts = body.split()
+            desc = clean_note(inline.strip()) or clean_note(section) \
+                or clean_note(note)
             if validation.looks_like_wildcard(parts[0]):
                 raise ValueError(
                     "line %d: wildcards cannot be bulk-imported" % lineno
@@ -244,23 +268,125 @@ def import_list_file(conn, path, tlds, blocked, psl, created_by, source, note):
                 raise ValueError(
                     "line %d: %s is permanently blocked" % (lineno, host)
                 )
-            entries.append((host, port))
+            entries.append((host, port, desc))
     ts = now()
     added = skipped = 0
-    for host, port in entries:
+    for host, port, desc in entries:
         exists = conn.execute(
-            "SELECT 1 FROM allowlist WHERE pattern = ? AND port = ?"
+            "SELECT id, note FROM allowlist WHERE pattern = ? AND port = ?"
             " AND consumed_at IS NULL"
             " AND (expires_at IS NULL OR expires_at > ?)",
             (host, port, ts),
         ).fetchone()
         if exists:
             skipped += 1
+            # Heal a missing description without touching one that exists.
+            if desc and not exists["note"]:
+                conn.execute("UPDATE allowlist SET note = ? WHERE id = ?",
+                             (desc, exists["id"]))
+                conn.commit()
             continue
         add_allowlist(conn, host, "exact", port, created_by, "permanent",
-                      None, source, note)
+                      None, source, desc)
         added += 1
     return added, skipped
+
+
+def import_user_text(conn, text, tlds, blocked, psl, created_by):
+    """Lenient import of an operator-pasted list: "host [port] [# description]"
+    per line. Unlike the shipped-list loader, a bad line never aborts the
+    import — it lands in the returned rejection list with its reason, so the
+    operator sees exactly what was refused and why. Wildcards are refused by
+    design (the Add dialog is their only path); nothing existing is replaced.
+    Returns {"added": n, "present": n, "rejected": [(lineno, entry, reason)]}.
+    """
+    ts = now()
+    added = present = 0
+    rejected = []
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        body, _, inline = stripped.partition("#")
+        parts = body.split()
+        if not parts:
+            continue
+        token = parts[0]
+        desc = clean_note(inline.strip())
+        if validation.looks_like_wildcard(token):
+            rejected.append((lineno, token,
+                             "wildcards are added one at a time through the"
+                             " Add form's confirmation dialog"))
+            continue
+        try:
+            host = validation.normalize_hostname(token, tlds)
+        except validation.ValidationError as exc:
+            rejected.append((lineno, token, "invalid hostname (%s)" % exc.code))
+            continue
+        host = validation.canonical_host(host, psl)
+        port = 443
+        if len(parts) > 1:
+            try:
+                port = int(parts[1])
+            except ValueError:
+                rejected.append((lineno, token, "bad port %r" % parts[1]))
+                continue
+            if not 1 <= port <= 65535:
+                rejected.append((lineno, token, "bad port %d" % port))
+                continue
+        if validation.is_blocked(host, blocked):
+            rejected.append((lineno, host, "permanently blocked domain"))
+            continue
+        row = conn.execute(
+            "SELECT id, note FROM allowlist WHERE pattern = ? AND port = ?"
+            " AND consumed_at IS NULL"
+            " AND (expires_at IS NULL OR expires_at > ?)",
+            (host, port, ts),
+        ).fetchone()
+        if row:
+            present += 1
+            if desc and not row["note"]:
+                conn.execute("UPDATE allowlist SET note = ? WHERE id = ?",
+                             (desc, row["id"]))
+        else:
+            add_allowlist(conn, host, "exact", port, created_by, "permanent",
+                          None, "manual", desc)
+            added += 1
+    conn.commit()
+    return {"added": added, "present": present, "rejected": rejected}
+
+
+def erase_all(conn, ts):
+    """Expire every active allowlist entry, every source; returns the count.
+    A revoke, not a delete: the rows and the decision log keep the history,
+    and Load defaults can restore the shipped lists afterwards."""
+    cur = conn.execute(
+        "UPDATE allowlist SET expires_at = ?"
+        " WHERE (expires_at IS NULL OR expires_at > ?)",
+        (ts, ts),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def export_lines(conn, ts):
+    """The active allowlist as portable text: "pattern port  # description".
+    Wildcards are included for completeness; re-importing them goes through
+    the Add dialog, never a bulk load."""
+    rows = conn.execute(
+        "SELECT pattern, kind, port, note FROM allowlist"
+        " WHERE (expires_at IS NULL OR expires_at > ?)"
+        " AND consumed_at IS NULL ORDER BY pattern, port",
+        (ts,),
+    ).fetchall()
+    out = []
+    for r in rows:
+        pat = ("*." + r["pattern"]) if r["kind"] == "wildcard" else r["pattern"]
+        line = "%s %d" % (pat, r["port"])
+        if r["note"]:
+            line += "  # " + r["note"]
+        out.append(line)
+    return out
 
 
 def revoke_by_source(conn, source, ts):
@@ -364,28 +490,44 @@ def merge_www_rows(conn, psl):
     conn.commit()
 
 
-def count_allowlist(conn, ts, q=None):
-    """Active-entry count, with the same substring filter as list_allowlist
+# Panel filter buckets: shipped lists by their own source; everything the
+# operator added by hand or approved from the queue is "user".
+_SRC_FILTERS = {
+    "default": ("source = 'default'", []),
+    "starter": ("source = 'starter'", []),
+    "user": ("source IN ('manual', 'approval')", []),
+}
+
+
+def _allowlist_filters(sql, args, q, src):
+    if q:
+        sql += (" AND (instr(pattern, ?) > 0"
+                " OR instr(lower(COALESCE(note, '')), ?) > 0)")
+        args.extend([q, q])
+    if src in _SRC_FILTERS:
+        clause, extra = _SRC_FILTERS[src]
+        sql += " AND " + clause
+        args.extend(extra)
+    return sql, args
+
+
+def count_allowlist(conn, ts, q=None, src=None):
+    """Active-entry count, with the same filters as list_allowlist
     so a pager's total always agrees with its rows."""
     sql = (
         "SELECT COUNT(*) AS n FROM allowlist"
         " WHERE (expires_at IS NULL OR expires_at > ?)"
     )
-    args = [ts]
-    if q:
-        sql += " AND instr(pattern, ?) > 0"
-        args.append(q)
+    sql, args = _allowlist_filters(sql, [ts], q, src)
     return conn.execute(sql, args).fetchone()["n"]
 
 
-def list_allowlist(conn, ts, include_expired=False, q=None, limit=None, offset=0):
+def list_allowlist(conn, ts, include_expired=False, q=None, limit=None,
+                   offset=0, src=None):
     if include_expired:
         return conn.execute("SELECT * FROM allowlist ORDER BY id").fetchall()
     sql = "SELECT * FROM allowlist WHERE (expires_at IS NULL OR expires_at > ?)"
-    args = [ts]
-    if q:
-        sql += " AND instr(pattern, ?) > 0"
-        args.append(q)
+    sql, args = _allowlist_filters(sql, [ts], q, src)
     sql += " ORDER BY expires_at IS NULL, expires_at, pattern"
     if limit is not None:
         sql += " LIMIT ? OFFSET ?"

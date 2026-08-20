@@ -234,7 +234,7 @@ class PanelApp:
         marker in the decision log; the choice itself stays with the operator."""
         return validation.wildcard_psl_conflict(base, self.psl)
 
-    def manual_add(self, pattern, scope):
+    def manual_add(self, pattern, scope, note=None):
         """Add an exact entry, or signal that the wildcard dialog is needed.
         Returns (status, data): ('added', ids) | ('wildcard', base) | ('error', msg).
         """
@@ -259,7 +259,7 @@ class PanelApp:
                 return "error", "unknown scope"
             ids = db.add_allowlist(
                 self.conn, base, "exact", 443, "operator", scope,
-                self.scope_expiry(scope, ts), "manual",
+                self.scope_expiry(scope, ts), "manual", db.clean_note(note),
             )
             db.log_event(self.conn, self.textlog, ts, "manual_add", base, 443,
                          "operator", "ALLOWED", "exact scope=%s" % scope)
@@ -307,6 +307,46 @@ class PanelApp:
             db.revoke_entry(self.conn, entry_id, ts)
             db.log_event(self.conn, self.textlog, ts, "revoke", row["pattern"],
                          row["port"], "operator", None, "entry %d" % entry_id)
+
+    def import_text(self, text):
+        """Operator-pasted list import: adds what is missing, never replaces,
+        and reports every refused line with its reason."""
+        with self.lock:
+            result = db.import_user_text(
+                self.conn, text, self.tlds, self.blocked, self.psl, "operator"
+            )
+            db.log_event(
+                self.conn, self.textlog, db.now(), "list_import", None, None,
+                "operator", None,
+                "IMPORT: added %d, already present %d, rejected %d"
+                % (result["added"], result["present"], len(result["rejected"])),
+            )
+            return result
+
+    def export_text(self):
+        with self.lock:
+            lines = db.export_lines(self.conn, db.now())
+        return "\n".join(
+            ["# agent-filter allowlist export",
+             "# format: host port  # description",
+             "# wildcards re-import only through the panel's Add dialog"]
+            + lines
+        ) + "\n"
+
+    def erase_all_entries(self):
+        """Revoke every active entry, every source; returns the count. The
+        rows and the decision log keep the history, and Load defaults can
+        restore the shipped lists afterwards."""
+        with self.lock:
+            ts = db.now()
+            count = db.erase_all(self.conn, ts)
+            db.log_event(self.conn, self.textlog, ts, "erase_all", None, None,
+                         "operator", None,
+                         "ERASE ALL: %d entries revoked" % count)
+            return count
+
+    def active_total(self):
+        return db.count_allowlist(self.conn, db.now())
 
     # -- default list (optional bulk import) -----------------------------
 
@@ -463,9 +503,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         session = self._session()
         return session["csrf"] if session else ""
 
-    def _form(self):
+    def _form(self, cap=65536):
         try:
-            length = min(int(self.headers.get("Content-Length", 0) or 0), 65536)
+            length = min(int(self.headers.get("Content-Length", 0) or 0), cap)
         except ValueError:
             length = 0
         data = self.rfile.read(length).decode("utf-8", "replace")
@@ -518,6 +558,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._activity_page()
         elif path == "/add":
             self._add_page()
+        elif path == "/export":
+            data = self.app.export_text().encode("utf-8")
+            self._headers(200, {
+                "Content-Disposition":
+                    'attachment; filename="agent-filter-allowlist.txt"',
+            }, content_type="text/plain; charset=utf-8")
+            self.wfile.write(data)
         else:
             self._page("<p>Not found.</p>", 404)
 
@@ -585,27 +632,41 @@ class Handler(http.server.BaseHTTPRequestHandler):
             page = max(1, int(params.get("page", ["1"])[0]))
         except ValueError:
             page = 1
+        src = params.get("src", [""])[0]
+        if src not in ("", "default", "starter", "user"):
+            src = ""
         ts = db.now()
-        total = db.count_allowlist(self.app.conn, ts, q or None)
+        total = db.count_allowlist(self.app.conn, ts, q or None, src or None)
         pages = max(1, -(-total // size))
         page = min(page, pages)
         rows = db.list_allowlist(
-            self.app.conn, ts, q=q or None, limit=size, offset=(page - 1) * size
+            self.app.conn, ts, q=q or None, limit=size,
+            offset=(page - 1) * size, src=src or None
         )
 
         def link(target):
             return "/allowlist?" + urllib.parse.urlencode(
-                {"q": q, "size": size, "page": target}
+                {"q": q, "size": size, "page": target, "src": src}
             )
 
+        src_options = "".join(
+            '<option value="%s"%s>%s</option>'
+            % (v, " selected" if v == src else "", label)
+            for v, label in (
+                ("", "all origins"), ("default", "default list"),
+                ("starter", "starter list"), ("user", "added by you"),
+            )
+        )
         controls = (
             '<form method="get" action="/allowlist"><p>'
             '<input type="text" name="q" value="%s" placeholder="filter by'
-            ' pattern"> Per page: <select name="size">%s</select> '
+            ' pattern or description"> Origin: <select name="src">%s</select>'
+            ' Per page: <select name="size">%s</select> '
             '<button>Apply</button> <span class="meta">%d matching'
             " entr%s</span></p></form>"
             % (
                 esc(q),
+                src_options,
                 "".join(
                     '<option value="%d"%s>%d</option>'
                     % (s, " selected" if s == size else "", s)
@@ -625,27 +686,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
             nav_parts.append('<a href="%s">Next &raquo;</a>' % esc(link(page + 1)))
         pager = "<p>%s</p>" % " &middot; ".join(nav_parts)
 
+        origin_label = {"default": "default", "starter": "starter",
+                        "manual": "you", "approval": "you (approved)"}
         body = ["<h1>Active allowlist</h1>", controls, pager,
                 "<table><tr><th>Pattern</th><th>Kind"
-                "</th><th>Port</th><th>Scope</th><th>Expires</th><th>Source"
-                "</th><th></th></tr>"]
+                "</th><th>Port</th><th>Description</th><th>Scope</th>"
+                "<th>Expires</th><th>Origin</th><th></th></tr>"]
         for row in rows:
             flag = ' <span class="wildcard">WILDCARD</span>' \
                 if row["kind"] == "wildcard" else ""
             body.append(
-                "<tr><td>%s%s</td><td>%s</td><td>%d</td><td>%s</td><td>%s"
+                "<tr><td>%s%s</td><td>%s</td><td>%d</td>"
+                '<td class="meta">%s</td><td>%s</td><td>%s'
                 '</td><td>%s</td><td><form method="post" action="/revoke">'
                 '<input type="hidden" name="csrf" value="%s">'
                 '<input type="hidden" name="entry_id" value="%d">'
                 "<button>Revoke</button></form></td></tr>"
                 % (
                     esc(row["pattern"]), flag, esc(row["kind"]), row["port"],
-                    esc(row["scope"]), _fmt_ts(row["expires_at"]),
-                    esc(row["source"]), esc(self._csrf()), row["id"],
+                    esc(row["note"] or ""), esc(row["scope"]),
+                    _fmt_ts(row["expires_at"]),
+                    esc(origin_label.get(row["source"], row["source"])),
+                    esc(self._csrf()), row["id"],
                 )
             )
         body.append("</table>")
         body.append(pager)
+        body.append(self._list_tools_section())
         self._page("".join(body))
 
     def _activity_page(self):
@@ -723,6 +790,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             '<input type="hidden" name="csrf" value="%s">'
             '<p><input type="text" name="pattern"'
             ' placeholder="host.example.com or *.example.com"></p>'
+            '<p><input type="text" name="note" maxlength="255" size="60"'
+            ' placeholder="one-line description of what this host is'
+            ' (optional)"></p>'
             "<p>Scope: <select name=\"scope\">"
             '<option value="once">once</option>'
             '<option value="session">session</option>'
@@ -758,6 +828,52 @@ class Handler(http.server.BaseHTTPRequestHandler):
             % esc(self._csrf())
         )
 
+    def _import_result_page(self, result):
+        body = [
+            "<h1>Import finished</h1>",
+            "<p>Added <strong>%d</strong> &middot; already present"
+            " <strong>%d</strong> &middot; rejected <strong>%d</strong>.</p>"
+            % (result["added"], result["present"], len(result["rejected"])),
+        ]
+        if result["rejected"]:
+            body.append(
+                "<p class='meta'>Nothing existing was touched. Each rejected"
+                " line and the reason:</p>"
+                "<table><tr><th>Line</th><th>Entry</th><th>Reason</th></tr>"
+            )
+            for lineno, entry, reason in result["rejected"]:
+                body.append(
+                    "<tr><td>%d</td><td>%s</td><td>%s</td></tr>"
+                    % (lineno, esc(entry), esc(reason))
+                )
+            body.append("</table>")
+        body.append('<p><a href="/allowlist">Back to the allowlist</a></p>')
+        self._page("".join(body))
+
+    def _list_tools_section(self):
+        return (
+            '<div class="card"><h1>Export, import, erase</h1>'
+            "<p class='meta'><a href=\"/export\">Export the current list"
+            "</a> as plain text: one entry per line with its description."
+            " To import, paste a list below — one <code>host [port]"
+            " [# description]</code> per line. Importing only <strong>adds"
+            "</strong>: nothing existing is replaced or removed. To replace"
+            " the list, use Erase first, then import. Refused lines"
+            " (wildcards, blocked or invalid hosts) are reported with"
+            " reasons, not silently dropped.</p>"
+            '<form method="post" action="/import">'
+            '<input type="hidden" name="csrf" value="%s">'
+            '<p><textarea name="text" rows="6" cols="70"'
+            ' placeholder="api.example.com 443  # example service"></textarea></p>'
+            "<p><button>Import</button></p></form>"
+            '<form method="post" action="/erase">'
+            '<input type="hidden" name="csrf" value="%s">'
+            "<p><button>Erase the entire allowlist&hellip;</button>"
+            " <span class='meta'>asks for confirmation first</span></p></form>"
+            "</div>"
+            % (esc(self._csrf()), esc(self._csrf()))
+        )
+
     def _default_list_section(self):
         available, active = self.app.default_list_counts()
         body = [
@@ -767,8 +883,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             " Exact hostnames only — no wildcards — each judged by the"
             " stranger-signup rule, with mail providers, webhook endpoints,"
             " paste sites, URL shorteners, and tunnel vendors deliberately"
-            " absent. Importing adds permanent entries with source"
-            " &ldquo;default&rdquo;; revoke any entry individually, or the"
+            " absent. Every entry carries a one-line description of what the"
+            " host is. Loading adds permanent entries with origin"
+            " &ldquo;default&rdquo; and only adds what is missing — nothing"
+            " you have is overwritten; revoke any entry individually, or the"
             " whole set below.</p>"
         ]
         if available is None:
@@ -780,7 +898,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             body.append(
                 '<form method="post" action="/import-defaults">'
                 '<input type="hidden" name="csrf" value="%s">'
-                "<p><button>Import default list (%d hosts)</button></p></form>"
+                "<p><button>Load defaults (%d hosts)</button></p></form>"
                 % (esc(self._csrf()), available)
             )
         if active:
@@ -798,7 +916,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
-        form = self._form()
+        # A pasted allowlist import can legitimately exceed the normal cap.
+        form = self._form(1048576 if path == "/import" else 65536)
         if path == "/login":
             self._do_login(form)
             return
@@ -824,7 +943,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._headers(303, {"Location": "/"})
         elif path == "/add":
             status, data = self.app.manual_add(
-                form.get("pattern", ""), form.get("scope", "permanent")
+                form.get("pattern", ""), form.get("scope", "permanent"),
+                form.get("note", ""),
             )
             if status == "added":
                 self._headers(303, {"Location": "/allowlist"})
@@ -860,6 +980,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._headers(303, {"Location": "/allowlist"})
         elif path == "/revoke":
             self.app.revoke(self._int(form.get("entry_id")))
+            self._headers(303, {"Location": "/allowlist"})
+        elif path == "/import":
+            result = self.app.import_text(form.get("text", ""))
+            self._import_result_page(result)
+        elif path == "/erase":
+            total = self.app.active_total()
+            self._page(
+                '<div class="danger">'
+                '<p class="danger-title">Erase the entire allowlist?</p>'
+                "<p>This revokes all %d active entries — defaults, starter,"
+                " and everything you added. The agent then reaches nothing"
+                " until entries are approved again. The activity log keeps"
+                " the history, and <strong>Load defaults</strong> on the Add"
+                " page restores the shipped list afterwards.</p>"
+                '<p><a href="/allowlist">Cancel</a></p></div>'
+                '<form method="post" action="/erase-confirm">'
+                '<input type="hidden" name="csrf" value="%s">'
+                "<p><button>Erase all %d entries</button></p></form>"
+                % (total, esc(self._csrf()), total)
+            )
+        elif path == "/erase-confirm":
+            self.app.erase_all_entries()
             self._headers(303, {"Location": "/allowlist"})
         elif path == "/pause":
             minutes = form.get("minutes", "")

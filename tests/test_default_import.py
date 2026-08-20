@@ -210,7 +210,7 @@ class PanelDefaultImport(unittest.TestCase):
     def test_add_page_offers_import_with_count(self):
         cookie, _ = self.login()
         _, body = self.request("GET", "/add", cookie=cookie)
-        self.assertIn("Import default list (3 hosts)", body)
+        self.assertIn("Load defaults (3 hosts)", body)
         self.assertNotIn("Remove all imported", body)
 
     def test_import_then_remove_via_panel(self):
