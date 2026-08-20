@@ -476,3 +476,70 @@ class ServeGuard(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PanelListIO(PanelHarness):
+    """Export, paste-import, erase-with-confirm, and the description field."""
+
+    def test_add_with_description_shows_in_allowlist(self):
+        cookie, csrf = self.login()
+        response, _ = self.request("POST", "/add", {
+            "csrf": csrf, "pattern": "described.example.com",
+            "scope": "permanent", "note": "A described service",
+        }, cookie)
+        self.assertEqual(response.status, 303)
+        _, body = self.request("GET", "/allowlist?q=described", cookie=cookie)
+        self.assertIn("A described service", body)
+        self.assertIn(">you<", body)
+
+    def test_export_is_plain_text_with_descriptions(self):
+        cookie, csrf = self.login()
+        self.request("POST", "/add", {
+            "csrf": csrf, "pattern": "exported.example.com",
+            "scope": "permanent", "note": "for export",
+        }, cookie)
+        response, body = self.request("GET", "/export", cookie=cookie)
+        self.assertEqual(response.status, 200)
+        self.assertIn("text/plain", response.getheader("Content-Type"))
+        self.assertIn("attachment", response.getheader("Content-Disposition"))
+        self.assertIn("exported.example.com 443  # for export", body)
+
+    def test_import_reports_rejects_and_requires_csrf(self):
+        cookie, csrf = self.login()
+        response, _ = self.request("POST", "/import", {
+            "csrf": "wrong", "text": "x.example.com\n"}, cookie)
+        self.assertNotEqual(response.status, 200)
+        response, body = self.request("POST", "/import", {
+            "csrf": csrf,
+            "text": "imported.example.com 443  # pasted\n*.bulk.example.com\n",
+        }, cookie)
+        self.assertEqual(response.status, 200)
+        self.assertIn("Added <strong>1</strong>", body)
+        self.assertIn("rejected <strong>1</strong>", body)
+        self.assertIn("Add form", body)
+
+    def test_erase_confirms_then_empties(self):
+        cookie, csrf = self.login()
+        self.request("POST", "/add", {
+            "csrf": csrf, "pattern": "victim.example.com",
+            "scope": "permanent", "note": "",
+        }, cookie)
+        response, body = self.request("POST", "/erase",
+                                      {"csrf": csrf}, cookie)
+        self.assertEqual(response.status, 200)
+        self.assertIn("Erase the entire allowlist?", body)
+        response, _ = self.request("POST", "/erase-confirm",
+                                   {"csrf": csrf}, cookie)
+        self.assertEqual(response.status, 303)
+        self.assertEqual(db.count_allowlist(self.app.conn, db.now()), 0)
+
+    def test_source_filter_in_page(self):
+        cookie, csrf = self.login()
+        self.request("POST", "/add", {
+            "csrf": csrf, "pattern": "userentry.example.com",
+            "scope": "permanent", "note": "",
+        }, cookie)
+        _, body = self.request("GET", "/allowlist?src=user", cookie=cookie)
+        self.assertIn("userentry.example.com", body)
+        _, body = self.request("GET", "/allowlist?src=default", cookie=cookie)
+        self.assertNotIn("userentry.example.com", body)
