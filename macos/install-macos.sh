@@ -35,6 +35,11 @@ if [[ ! -x "$BREW_PY" ]]; then
   echo "Homebrew python3 not found at $BREW_PY; run: brew install python" >&2
   exit 1
 fi
+# tomllib needs 3.11+; an old python@3.x keg can still own the python3 link.
+if ! "$BREW_PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
+  echo "Homebrew python3 is older than 3.11; run: brew install python && brew link --overwrite python" >&2
+  exit 1
+fi
 if [[ ! -x "$BREW_PREFIX/sbin/squid" && ! -x "$BREW_PREFIX/opt/squid/sbin/squid" ]]; then
   echo "Squid not found under $BREW_PREFIX; run: brew install squid" >&2
   exit 1
@@ -42,6 +47,11 @@ fi
 
 echo "== Python virtual environment (argon2, idna)"
 install -d -m 0755 "$LIB"
+# Rebuild a venv left behind by an older interpreter.
+if [[ -x "$VENV/bin/python3" ]] && \
+   ! "$VENV/bin/python3" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
+  rm -rf "$VENV"
+fi
 if [[ ! -x "$VENV/bin/python3" ]]; then
   "$BREW_PY" -m venv "$VENV"
 fi
