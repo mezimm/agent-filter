@@ -1,0 +1,41 @@
+# agent-filter configuration. Root-owned, read-only to the broker account.
+# install.sh writes the real Tailscale IPv4 into panel.bind_ip.
+
+[paths]
+db = "/var/lib/approval-broker/broker.db"
+decisions_log = "/var/log/approval-broker/decisions.log"
+tld_list = "/etc/approval-broker/tlds.txt"
+blocked_domains = "/etc/approval-broker/blocked-domains.txt"
+default_allowlist = "/etc/approval-broker/default-allowlist.txt"
+public_suffix_list = "/etc/approval-broker/public-suffix-list.dat"
+submit_socket = "/run/approval-broker/submit.sock"
+acl_socket = "/run/approval-broker/acl.sock"
+
+[panel]
+# The VM's Tailscale IPv4 only — never loopback (the agent can reach
+# loopback) and never 0.0.0.0.
+bind_ip = "@TAILSCALE_IP@"
+port = 9120
+session_hours = 12
+
+[limits]
+# Spec section 10. Pending cap stops queue-flooding into rubber-stamping;
+# the submission budget stops iterating variations; the auto-reject budget
+# stops a submit-reject loop burning CPU forever.
+pending_max = 20
+submissions_per_hour = 30
+auto_rejects_per_hour = 60
+rationale_max_bytes = 2048
+
+[ports]
+# 443 only. Adding a port here also requires widening the proxy account's
+# firewall rule in the setup guide, or connections will still be rejected.
+allowed = [443]
+
+[scopes]
+# The 'session' approval scope window.
+session_hours = 4
+
+[log]
+rotate_bytes = 1048576
+keep = 5

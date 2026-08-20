@@ -1,0 +1,38 @@
+# Starter allowlist: the hosts the setup guide's own flows are known to need,
+# so a student's first locked-down run is not fifty prompts. Loaded once by
+# install.sh as permanent exact entries (source 'starter'); review and prune
+# in the panel. Format: one "host [port]" per line, port defaults to 443.
+#
+# Verify this set against the guide's section 15 and 20.3 flows whenever
+# Hermes or its installer changes. Never add a mail provider here: mail
+# reaches any recipient on earth, which defeats the allowlist from inside.
+
+# The guide's canonical connectivity-test host.
+example.com
+
+# Hermes install, updates, and Nous Portal.
+hermes-agent.nousresearch.com
+nousresearch.com
+portal.nousresearch.com
+inference-api.nousresearch.com
+
+# Playwright browsers (Hermes web tooling downloads these at install).
+playwright.dev
+cdn.playwright.dev
+
+# Python packaging (uv, pip).
+pypi.org
+files.pythonhosted.org
+astral.sh
+
+# GitHub over HTTPS (dependencies; use HTTPS git remotes, SSH egress is not
+# carried).
+github.com
+api.github.com
+codeload.github.com
+objects.githubusercontent.com
+raw.githubusercontent.com
+
+# Node packaging.
+registry.npmjs.org
+nodejs.org

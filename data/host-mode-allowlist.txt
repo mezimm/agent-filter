@@ -1,0 +1,15 @@
+# Host-mode extra allowlist: loaded by macos/install-macos.sh in addition to
+# the starter list. In host mode the whole VM — including root's apt — rides
+# the proxy, so the Ubuntu package mirrors must be allowlisted. (The Linux
+# in-VM design deliberately omits these: there, apt is root's traffic and
+# never crosses the proxy.) Format: one "host [port]" per line.
+
+# Ubuntu package mirrors (the guide switches apt sources to HTTPS).
+ports.ubuntu.com
+archive.ubuntu.com
+security.ubuntu.com
+esm.ubuntu.com
+
+# Ubuntu login-message and changelog fetches; harmless, avoids log noise.
+motd.ubuntu.com
+changelogs.ubuntu.com

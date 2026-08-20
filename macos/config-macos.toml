@@ -1,0 +1,42 @@
+# agent-filter configuration — macOS host mode.
+# Installed to /etc/approval-broker/config.toml by macos/install-macos.sh,
+# which substitutes @TAILSCALE_IP@ with the Mac's Tailscale IPv4.
+#
+# Host mode runs the whole stack (Squid, broker, panel) on the Mac that hosts
+# the agent VM. The VM's only network path is a QEMU guestfwd to Squid, so
+# binding the panel to the Mac's Tailscale address keeps it reachable from
+# the operator's own devices and unreachable from the VM.
+
+[paths]
+db = "/usr/local/var/agent-filter/broker.db"
+decisions_log = "/usr/local/var/agent-filter/decisions.log"
+tld_list = "/etc/approval-broker/tlds.txt"
+blocked_domains = "/etc/approval-broker/blocked-domains.txt"
+default_allowlist = "/etc/approval-broker/default-allowlist.txt"
+public_suffix_list = "/etc/approval-broker/public-suffix-list.dat"
+submit_socket = "/usr/local/var/agent-filter/submit.sock"
+acl_socket = "/usr/local/var/agent-filter/acl.sock"
+
+[panel]
+# The Mac's Tailscale IPv4 only — never loopback and never 0.0.0.0. The VM
+# cannot reach this address: its only route out is the guestfwd to Squid,
+# and Squid refuses CONNECT to tailnet and private ranges.
+bind_ip = "@TAILSCALE_IP@"
+port = 9120
+session_hours = 12
+
+[limits]
+pending_max = 20
+submissions_per_hour = 30
+auto_rejects_per_hour = 60
+rationale_max_bytes = 2048
+
+[ports]
+allowed = [443]
+
+[scopes]
+session_hours = 4
+
+[log]
+rotate_bytes = 1048576
+keep = 5

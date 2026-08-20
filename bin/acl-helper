@@ -1,0 +1,66 @@
+#!/usr/bin/python3
+"""Squid external ACL helper: OK if the broker allows the destination, ERR
+otherwise — including on any error, timeout, or broker outage. Fail-closed
+is the whole contract of this file.
+
+Normal mode:  each stdin line is "<host> <port>"   (%DST %PORT)
+--sni mode:   each stdin line is "<sni>"           (%ssl::>sni)
+              A connection whose ClientHello carries no SNI ("-") cannot be
+              verified by name and is therefore denied.
+"""
+
+import json
+import socket
+import sys
+import urllib.parse
+
+sys.path.insert(0, "/usr/local/lib/agent-filter")
+
+from approval_broker import config  # noqa: E402
+
+TIMEOUT_SECONDS = 2.5
+
+
+def ask_broker(sock_path, host, port, final):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.settimeout(TIMEOUT_SECONDS)
+        sock.connect(sock_path)
+        sock.sendall(
+            (json.dumps({"host": host, "port": port, "final": final}) + "\n")
+            .encode("utf-8")
+        )
+        data = b""
+        while b"\n" not in data and len(data) < 8192:
+            chunk = sock.recv(1024)
+            if not chunk:
+                break
+            data += chunk
+    reply = json.loads(data.split(b"\n", 1)[0].decode("utf-8"))
+    return bool(reply.get("allow"))
+
+
+def main():
+    sni_mode = "--sni" in sys.argv[1:]
+    sock_path = config.load().get("paths", "acl_socket")
+    for line in sys.stdin:
+        verdict = "ERR"
+        try:
+            tokens = [urllib.parse.unquote(t) for t in line.strip().split()]
+            if sni_mode:
+                host = tokens[0] if tokens else "-"
+                port = 443
+            else:
+                host, port = tokens[0], int(tokens[1])
+            if host and host != "-":
+                # The SNI check is a connection's final helper call; a 'once'
+                # grant is spent here, after the CONNECT check has passed.
+                if ask_broker(sock_path, host, port, sni_mode):
+                    verdict = "OK"
+        except Exception:
+            verdict = "ERR"
+        sys.stdout.write(verdict + "\n")
+        sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    main()

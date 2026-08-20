@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.agent-filter.panel</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/lib/agent-filter/venv/bin/python3</string>
+        <string>-m</string>
+        <string>approval_broker.panel</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>/usr/local/lib/agent-filter</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <!-- The panel binds the Mac's Tailscale address; at login Tailscale may
+         not be up yet, so the bind fails and launchd retries until it is. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>StandardOutPath</key>
+    <string>/usr/local/var/agent-filter/panel.log</string>
+    <key>StandardErrorPath</key>
+    <string>/usr/local/var/agent-filter/panel.log</string>
+</dict>
+</plist>

@@ -1,0 +1,13 @@
+[Unit]
+Description=Approval broker agent submission socket
+
+[Socket]
+ListenStream=/run/approval-broker/submit.sock
+FileDescriptorName=submit
+Service=approval-broker.service
+SocketUser=broker
+SocketGroup=agent
+SocketMode=0620
+
+[Install]
+WantedBy=sockets.target

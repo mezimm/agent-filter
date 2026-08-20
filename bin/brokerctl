@@ -1,0 +1,85 @@
+#!/usr/bin/python3
+"""brokerctl — the operator's command-line entry points.
+
+  set-password        set the panel login password (argon2id; never hand-edit)
+  load-starter FILE   load a starter allowlist (used by install.sh)
+"""
+
+import getpass
+import os
+import pwd
+import sys
+
+# Installed location first; a repo-relative path is appended (not prepended)
+# only when running from a source checkout, so an unexpected directory under
+# /usr/local cannot shadow the real package.
+sys.path.insert(0, "/usr/local/lib/agent-filter")
+_repo = os.path.join(os.path.dirname(__file__), "..")
+if os.path.isdir(os.path.join(_repo, "approval_broker")):
+    sys.path.append(_repo)
+
+from approval_broker import config, db, validation  # noqa: E402
+
+
+def _fix_ownership(db_path):
+    """Root's sqlite writes can leave -wal/-shm files owned by root, which
+    would lock the broker account out of its own database. Hand them back."""
+    if os.geteuid() != 0:
+        return
+    try:
+        broker = pwd.getpwnam("broker")
+    except KeyError:
+        return
+    for suffix in ("", "-wal", "-shm"):
+        path = db_path + suffix
+        if os.path.exists(path):
+            os.chown(path, broker.pw_uid, broker.pw_gid)
+
+
+def set_password(cfg):
+    try:
+        from argon2 import PasswordHasher
+    except ImportError:
+        sys.exit("python3-argon2 is not installed; run install.sh first")
+    first = getpass.getpass("New panel password: ")
+    second = getpass.getpass("Repeat: ")
+    if first != second:
+        sys.exit("Passwords do not match.")
+    if len(first) < 8:
+        sys.exit("Use at least 8 characters.")
+    conn = db.open_db(cfg.get("paths", "db"))
+    db.set_setting(conn, "panel_password_hash", PasswordHasher().hash(first))
+    conn.close()
+    _fix_ownership(cfg.get("paths", "db"))
+    print("Panel password updated.")
+
+
+def load_starter(cfg, path):
+    tlds = validation.load_tlds(cfg.get("paths", "tld_list"))
+    blocked = validation.load_blocked(cfg.get("paths", "blocked_domains"))
+    psl = validation.load_psl(cfg.get("paths", "public_suffix_list"))
+    conn = db.open_db(cfg.get("paths", "db"))
+    try:
+        added, _ = db.import_list_file(conn, path, tlds, blocked, psl,
+                                       "install", "starter",
+                                       "starter allowlist")
+    except ValueError as exc:
+        sys.exit("starter list rejected: %s" % exc)
+    conn.close()
+    _fix_ownership(cfg.get("paths", "db"))
+    print("Starter allowlist: %d entries added." % added)
+
+
+def main():
+    cfg = config.load()
+    args = sys.argv[1:]
+    if args[:1] == ["set-password"]:
+        set_password(cfg)
+    elif args[:1] == ["load-starter"] and len(args) == 2:
+        load_starter(cfg, args[1])
+    else:
+        sys.exit(__doc__.strip())
+
+
+if __name__ == "__main__":
+    main()

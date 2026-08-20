@@ -1,0 +1,13 @@
+[Unit]
+Description=Approval broker proxy ACL socket
+
+[Socket]
+ListenStream=/run/approval-broker/acl.sock
+FileDescriptorName=acl
+Service=approval-broker.service
+SocketUser=broker
+SocketGroup=proxy
+SocketMode=0660
+
+[Install]
+WantedBy=sockets.target

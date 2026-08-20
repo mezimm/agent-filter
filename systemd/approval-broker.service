@@ -1,0 +1,26 @@
+[Unit]
+Description=Approval broker daemon (allowlist, queue, decision log)
+Requires=approval-broker-submit.socket approval-broker-acl.socket
+After=approval-broker-submit.socket approval-broker-acl.socket
+
+[Service]
+Type=simple
+User=broker
+Group=broker
+Environment=PYTHONPATH=/usr/local/lib/agent-filter
+ExecStart=/usr/bin/python3 -m approval_broker.broker
+Restart=always
+RestartSec=2
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/approval-broker /var/log/approval-broker
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

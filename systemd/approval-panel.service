@@ -1,0 +1,26 @@
+[Unit]
+Description=Approval panel web UI
+Wants=network-online.target
+After=network-online.target tailscaled.service approval-broker.service
+
+[Service]
+Type=simple
+User=broker
+Group=broker
+Environment=PYTHONPATH=/usr/local/lib/agent-filter
+ExecStart=/usr/bin/python3 -m approval_broker.panel
+Restart=always
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/approval-broker /var/log/approval-broker
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

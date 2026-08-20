@@ -1,0 +1,21 @@
+# Never-allow domains (spec section 8.4). Refused from every path — agent
+# submission, proxy check, and panel entry — exact or wildcard, with
+# DOMAIN_PERMANENTLY_BLOCKED. One domain per line; subdomains at any depth
+# are covered automatically. Every entry must carry its reason.
+
+# tailscale.com: *.tailscale.com would hand over the Tailscale control plane
+# and every DERP relay in a single entry, turning an allowlist approval into
+# a ready-made interactive tunnel. The agent has no legitimate need: the
+# installer and --auto-update run as root and never use this proxy.
+tailscale.com
+
+# ts.net: MagicDNS names of every tailnet peer live here
+# (<device>.<tailnet>.ts.net). Approving one — or a *.ts.net wildcard — points
+# the agent straight at the operator's own machines and the VM itself, which is
+# exactly what the address-based proxy deny (squid.conf to_internal) and this
+# list exist to prevent. Root's Tailscale traffic does not use this proxy.
+ts.net
+
+# tailscale.io: Tailscale's corporate/API domain; same control-plane concern as
+# tailscale.com and no agent need.
+tailscale.io
