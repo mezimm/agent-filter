@@ -24,7 +24,6 @@ One thing agent-filter cannot do alone: the agent's machine must be wired so thi
 - Export, paste-import (refused lines are listed with reasons), and a confirm-guarded erase.
 - A red warning when a wildcard would approve strangers' sites (`*.github.io` and friends).
 - Every decision stamped in an activity log a five-minute monthly review can read.
-- A macOS menu-bar switch ([SwiftBar](https://swiftbar.app)) showing health, waiting approvals, and pause controls.
 
 ## Install
 
