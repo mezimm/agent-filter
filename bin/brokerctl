@@ -3,6 +3,8 @@
 
   set-password        set the panel login password (argon2id; never hand-edit)
   load-starter FILE   load a starter allowlist (used by install.sh)
+  pause 15|60|off     open the proxy gate (the panel's Pause, from the CLI)
+  resume              close it again
 """
 
 import getpass
@@ -70,6 +72,43 @@ def load_starter(cfg, path):
     print("Starter allowlist: %d entries added." % added)
 
 
+def pause(cfg, arg):
+    """Mirror the panel's pause exactly: same setting values, same log
+    stamps, so the monthly review reads one vocabulary."""
+    if arg not in ("15", "60", "off"):
+        sys.exit("usage: brokerctl pause 15|60|off")
+    conn = db.open_db(cfg.get("paths", "db"))
+    textlog = db.TextLog(cfg.get("paths", "decisions_log"),
+                         cfg.get("log", "rotate_bytes"), cfg.get("log", "keep"))
+    ts = db.now()
+    if arg == "off":
+        db.set_setting(conn, "enforcement_paused_until", "off")
+        detail = "ENFORCEMENT PAUSE indefinite (off until resumed)"
+    else:
+        until = ts + int(arg) * 60
+        db.set_setting(conn, "enforcement_paused_until", str(until))
+        detail = "ENFORCEMENT PAUSE %sm until %d" % (arg, until)
+    db.log_event(conn, textlog, ts, "enforcement_pause", None, None,
+                 "operator", "ALLOWED", detail)
+    conn.close()
+    _fix_ownership(cfg.get("paths", "db"))
+    print(detail)
+
+
+def resume(cfg):
+    conn = db.open_db(cfg.get("paths", "db"))
+    textlog = db.TextLog(cfg.get("paths", "decisions_log"),
+                         cfg.get("log", "rotate_bytes"), cfg.get("log", "keep"))
+    ts = db.now()
+    db.set_setting(conn, "enforcement_paused_until", "0")
+    db.log_event(conn, textlog, ts,
+                 "enforcement_resume", None, None, "operator", None,
+                 "enforcement resumed")
+    conn.close()
+    _fix_ownership(cfg.get("paths", "db"))
+    print("Enforcement resumed.")
+
+
 def main():
     cfg = config.load()
     args = sys.argv[1:]
@@ -77,6 +116,10 @@ def main():
         set_password(cfg)
     elif args[:1] == ["load-starter"] and len(args) == 2:
         load_starter(cfg, args[1])
+    elif args[:1] == ["pause"] and len(args) == 2:
+        pause(cfg, args[1])
+    elif args[:1] == ["resume"]:
+        resume(cfg)
     else:
         sys.exit(__doc__.strip())
 

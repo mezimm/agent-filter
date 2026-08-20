@@ -3,7 +3,7 @@
 #
 # Installs the broker, panel, and Squid configuration on the Mac that hosts
 # the agent VM. The VM's only network path is a QEMU guestfwd to Squid on
-# 127.0.0.1:8888, so the whole stack runs as the normal Mac account: launchd
+# 127.0.0.1:9188, so the whole stack runs as the normal Mac account: launchd
 # user agents for broker and panel, brew services for Squid.
 #
 # Run with sudo from the normal Mac account: sudo ./macos/install-macos.sh
