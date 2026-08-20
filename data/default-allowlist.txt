@@ -55,6 +55,8 @@
 # needs — github.com, pypi.org, registry.npmjs.org and friends — so they are
 # not repeated here. Re-import after editing: only missing entries are added.
 
+# == Platform and OS
+
 # -- Course platform: macOS, Homebrew, QEMU, virtualisation -------------------
 
 brew.sh
@@ -166,6 +168,8 @@ kali.org
 system76.com
 winehq.org
 appdb.winehq.org
+
+# == Package registries and languages
 
 # -- Package registries and language infrastructure ---------------------------
 
@@ -396,6 +400,8 @@ adacore.com
 swi-prolog.org
 odin-lang.org
 
+# == Python and JavaScript
+
 # -- Python ecosystem ---------------------------------------------------------
 
 palletsprojects.com
@@ -583,6 +589,8 @@ playwright-verizon.azureedge.net
 playwright.download.prss.microsoft.com
 googlechromelabs.github.io
 
+# == Web and internet standards
+
 # -- Web platform references and standards ------------------------------------
 
 mozilla.org
@@ -685,6 +693,8 @@ matrix.org
 spec.matrix.org
 xmpp.org
 
+# == Code hosting and developer tools
+
 # -- Source forges and code hosting -------------------------------------------
 
 docs.github.com
@@ -783,6 +793,8 @@ webdriver.io
 appium.io
 exiftool.org
 7-zip.org
+
+# == Infrastructure and databases
 
 # -- Containers, Kubernetes, infrastructure as code ---------------------------
 
@@ -1054,6 +1066,8 @@ firebirdsql.org
 h2database.com
 db-engines.com
 
+# == Cloud and business platforms
+
 # -- Cloud providers and platforms --------------------------------------------
 
 aws.amazon.com
@@ -1276,6 +1290,8 @@ images.unsplash.com
 pexels.com
 images.pexels.com
 pixabay.com
+
+# == AI and machine learning
 
 # -- AI and machine learning --------------------------------------------------
 
@@ -1551,6 +1567,8 @@ colab.research.google.com
 vtk.org
 paraview.org
 
+# == Security, networking, hardware
+
 # -- Security references ------------------------------------------------------
 
 owasp.org
@@ -1663,6 +1681,8 @@ wokwi.com
 hackster.io
 hackaday.io
 esp32.com
+
+# == Academia and libraries
 
 # -- Academic publishing and research -----------------------------------------
 
@@ -1878,6 +1898,8 @@ dp.la
 europeana.eu
 zotero.org
 calibre-ebook.com
+
+# == Government, statistics, maps
 
 # -- US government and open data ----------------------------------------------
 
@@ -2132,6 +2154,8 @@ dwd.de
 opendata.dwd.de
 opensky-network.org
 tile.openstreetmap.org
+
+# == News, press, finance, media
 
 # -- News and current affairs -------------------------------------------------
 
@@ -2393,6 +2417,8 @@ xda-developers.com
 macrumors.com
 9to5mac.com
 
+# == Reference, documents, creative
+
 # -- General reference and misc utilities -------------------------------------
 
 duckduckgo.com
@@ -2535,6 +2561,8 @@ overreacted.io
 kentcdodds.com
 joshwcomeau.com
 
+# == Sports, health, science
+
 # -- Sports data --------------------------------------------------------------
 
 espn.com
@@ -2595,6 +2623,8 @@ hubblesite.org
 home.cern
 root.cern
 ligo.org
+
+# == Culture, society, travel, practice
 
 # -- Museums and cultural collections -----------------------------------------
 

@@ -247,7 +247,7 @@ def import_list_file(conn, path, tlds, blocked, psl, created_by, source, note):
                 # the shipped lists are organised exactly so. Whole paragraph,
                 # not its last line: a wrapped sentence must not truncate.
                 text = stripped.lstrip("#").strip().strip("-").strip()
-                if text:
+                if text and not text.startswith("="):
                     para.append(text)
                 continue
             if para:
@@ -275,6 +275,62 @@ def import_list_file(conn, path, tlds, blocked, psl, created_by, source, note):
                     "line %d: %s is permanently blocked" % (lineno, host)
                 )
             entries.append((host, port, desc))
+    return import_entries(conn, entries, created_by, source)
+
+
+def parse_catalog_groups(path, tlds, blocked, psl):
+    """The catalog's group layer: '# == Title' super-headers partition the
+    file's sections into ~15 loadable groups. Returns
+    [(title, [(host, port, desc), ...]), ...]; entries are validated and
+    canonicalised exactly as import_list_file would."""
+    groups = []
+    para = []
+    section = None
+    with open(path, "r", encoding="utf-8") as fh:
+        for raw in fh:
+            stripped = raw.strip()
+            if not stripped:
+                para = []
+                continue
+            if stripped.startswith("#"):
+                text = stripped.lstrip("#").strip()
+                if text.startswith("="):
+                    title = text.strip("=").strip()
+                    if title:
+                        groups.append((title, []))
+                    continue
+                text = text.strip("-").strip()
+                if text:
+                    para.append(text)
+                continue
+            if para:
+                section = " ".join(para)
+                para = []
+            if not groups:
+                groups.append(("Ungrouped", []))
+            body, _, inline = stripped.partition("#")
+            parts = body.split()
+            desc = clean_note(inline.strip()) or clean_note(section)
+            if validation.looks_like_wildcard(parts[0]):
+                continue
+            try:
+                host = validation.normalize_hostname(parts[0], tlds)
+            except validation.ValidationError:
+                continue
+            host = validation.canonical_host(host, psl)
+            try:
+                port = int(parts[1]) if len(parts) > 1 else 443
+            except ValueError:
+                continue
+            if validation.is_blocked(host, blocked):
+                continue
+            groups[-1][1].append((host, port, desc))
+    return [g for g in groups if g[1]]
+
+
+def import_entries(conn, entries, created_by, source):
+    """Insert validated (host, port, desc) entries as permanent exact rows;
+    shared by full-file and per-group imports. Returns (added, skipped)."""
     ts = now()
     added = skipped = 0
     for host, port, desc in entries:

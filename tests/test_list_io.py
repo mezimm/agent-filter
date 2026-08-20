@@ -212,3 +212,40 @@ class ListIO(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CatalogGroups(ListIO):
+    def test_groups_parse_and_exclude_marker_from_descriptions(self):
+        path = self._write_list(
+            "# == Group One\n\n# -- Section A ----\npypi.org\n\n"
+            "# == Group Two\n\n# -- Section B ----\nnpmjs.com\ncrates.io\n"
+        )
+        groups = db.parse_catalog_groups(path, self.tlds, self.blocked,
+                                         self.psl)
+        self.assertEqual([(g, [h for h, _, _ in e]) for g, e in groups],
+                         [("Group One", ["pypi.org"]),
+                          ("Group Two", ["npmjs.com", "crates.io"])])
+        db.import_list_file(self.conn, path, self.tlds, self.blocked,
+                            self.psl, "t", "default", None)
+        notes = dict(self.conn.execute("SELECT pattern, note FROM allowlist"))
+        self.assertEqual(notes["pypi.org"], "Section A")
+
+    def test_group_import_is_a_subset_and_idempotent(self):
+        path = self._write_list(
+            "# == G1\n\npypi.org\n\n# == G2\n\nnpmjs.com\n")
+        groups = db.parse_catalog_groups(path, self.tlds, self.blocked,
+                                         self.psl)
+        added, _ = db.import_entries(self.conn, groups[0][1], "t", "default")
+        self.assertEqual(added, 1)
+        self.assertEqual(db.count_allowlist(self.conn, db.now()), 1)
+        added, skipped = db.import_entries(self.conn, groups[0][1], "t",
+                                           "default")
+        self.assertEqual((added, skipped), (0, 1))
+
+    def test_shipped_catalog_file_yields_fifteen_groups(self):
+        path = os.path.join(REPO, "data", "default-allowlist.txt")
+        groups = db.parse_catalog_groups(path, self.tlds, self.blocked,
+                                         self.psl)
+        self.assertEqual(len(groups), 15)
+        total = sum(len(e) for _, e in groups)
+        self.assertGreater(total, 2400)
