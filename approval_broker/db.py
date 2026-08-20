@@ -234,19 +234,25 @@ def import_list_file(conn, path, tlds, blocked, psl, created_by, source, note):
     Returns (added, skipped).
     """
     entries = []
+    para = []       # consecutive comment lines form one description
     section = None
     with open(path, "r", encoding="utf-8") as fh:
         for lineno, raw in enumerate(fh, 1):
             stripped = raw.strip()
             if not stripped:
+                para = []
                 continue
             if stripped.startswith("#"):
-                # The nearest preceding comment line describes the entries
-                # under it — the shipped lists are organised exactly so.
+                # The comment paragraph nearest above an entry describes it —
+                # the shipped lists are organised exactly so. Whole paragraph,
+                # not its last line: a wrapped sentence must not truncate.
                 text = stripped.lstrip("#").strip().strip("-").strip()
                 if text:
-                    section = text
+                    para.append(text)
                 continue
+            if para:
+                section = " ".join(para)
+                para = []
             body, _, inline = stripped.partition("#")
             parts = body.split()
             desc = clean_note(inline.strip()) or clean_note(section) \
@@ -273,15 +279,20 @@ def import_list_file(conn, path, tlds, blocked, psl, created_by, source, note):
     added = skipped = 0
     for host, port, desc in entries:
         exists = conn.execute(
-            "SELECT id, note FROM allowlist WHERE pattern = ? AND port = ?"
+            "SELECT id, note, source FROM allowlist"
+            " WHERE pattern = ? AND port = ?"
             " AND consumed_at IS NULL"
             " AND (expires_at IS NULL OR expires_at > ?)",
             (host, port, ts),
         ).fetchone()
         if exists:
             skipped += 1
-            # Heal a missing description without touching one that exists.
-            if desc and not exists["note"]:
+            # Shipped rows carry machinery descriptions: a re-import may
+            # correct them. A row the operator created keeps their words —
+            # only an empty description is ever filled in.
+            machinery = exists["source"] in ("starter", "default")
+            if desc and (not exists["note"]
+                         or (machinery and desc != exists["note"])):
                 conn.execute("UPDATE allowlist SET note = ? WHERE id = ?",
                              (desc, exists["id"]))
                 conn.commit()

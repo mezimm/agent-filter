@@ -69,16 +69,37 @@ class ListIO(unittest.TestCase):
         db.add_allowlist(self.conn, "pypi.org", "exact", 443, "t",
                          "permanent", None, "default", None)
         db.add_allowlist(self.conn, "npmjs.com", "exact", 443, "t",
-                         "permanent", None, "default", "my own words")
-        path = self._write_list("# Registries\npypi.org\nnpmjs.com\n")
+                         "permanent", None, "manual", "my own words")
+        db.add_allowlist(self.conn, "crates.io", "exact", 443, "t",
+                         "permanent", None, "default", "stale fragment).")
+        path = self._write_list("# Registries\npypi.org\nnpmjs.com\ncrates.io\n")
         added, skipped = db.import_list_file(
             self.conn, path, self.tlds, self.blocked, self.psl,
             "t", "default", None)
-        self.assertEqual((added, skipped), (0, 2))
+        self.assertEqual((added, skipped), (0, 3))
         notes = dict(self.conn.execute(
             "SELECT pattern, note FROM allowlist"))
-        self.assertEqual(notes["pypi.org"], "Registries")   # healed
-        self.assertEqual(notes["npmjs.com"], "my own words")  # untouched
+        self.assertEqual(notes["pypi.org"], "Registries")     # filled
+        self.assertEqual(notes["npmjs.com"], "my own words")  # operator's
+        self.assertEqual(notes["crates.io"], "Registries")    # corrected
+
+    def test_multiline_comment_becomes_one_description(self):
+        path = self._write_list(
+            "# GitHub over HTTPS (dependencies; use HTTPS git remotes, SSH\n"
+            "# egress is not carried).\n"
+            "github.com\n"
+            "\n"
+            "# Next section\n"
+            "pypi.org\n"
+        )
+        db.import_list_file(self.conn, path, self.tlds, self.blocked,
+                            self.psl, "t", "default", None)
+        notes = dict(self.conn.execute("SELECT pattern, note FROM allowlist"))
+        self.assertEqual(
+            notes["github.com"],
+            "GitHub over HTTPS (dependencies; use HTTPS git remotes, SSH"
+            " egress is not carried).")
+        self.assertEqual(notes["pypi.org"], "Next section")
 
     # -- user import ---------------------------------------------------
 
