@@ -11,6 +11,7 @@ reachability is not authorisation.
 import hmac
 import html
 import ipaddress
+import os
 import subprocess
 import http.cookies
 import http.server
@@ -337,8 +338,8 @@ class PanelApp:
 
     def erase_all_entries(self):
         """Revoke every active entry, every source; returns the count. The
-        rows and the decision log keep the history, and Load defaults can
-        restore the shipped lists afterwards."""
+        rows and the decision log keep the history, and the Add page's
+        load buttons restore the shipped lists afterwards."""
         with self.lock:
             ts = db.now()
             count = db.erase_all(self.conn, ts)
@@ -384,6 +385,51 @@ class PanelApp:
             db.log_event(self.conn, self.textlog, ts, "default_import", None,
                          None, "operator", "ALLOWED",
                          "added=%d skipped=%d" % (added, skipped))
+            return None
+
+    def load_shipped(self):
+        """Re-load the staged default lists — the panel's recovery path
+        after an erase. Returns (added, error)."""
+        with self.lock:
+            base = os.path.dirname(self.cfg.get("paths", "default_allowlist"))
+            added = 0
+            for name in ("starter-allowlist.txt", "host-mode-allowlist.txt"):
+                path = os.path.join(base, name)
+                if not os.path.exists(path):
+                    continue
+                try:
+                    n, _ = db.import_list_file(
+                        self.conn, path, self.tlds, self.blocked, self.psl,
+                        "operator", "starter", None,
+                    )
+                except (OSError, ValueError) as exc:
+                    return added, str(exc)
+                added += n
+            db.log_event(self.conn, self.textlog, db.now(), "shipped_load",
+                         None, None, "operator", None,
+                         "default lists reloaded: %d added" % added)
+            return added, None
+
+    def catalog_groups(self):
+        """The catalog's group layer, or [] if the file is absent."""
+        path = self.cfg.get("paths", "default_allowlist")
+        try:
+            return db.parse_catalog_groups(path, self.tlds, self.blocked,
+                                           self.psl)
+        except OSError:
+            return []
+
+    def import_catalog_group(self, index):
+        with self.lock:
+            groups = self.catalog_groups()
+            if not 0 <= index < len(groups):
+                return "unknown catalog group"
+            title, entries = groups[index]
+            added, _ = db.import_entries(self.conn, entries, "operator",
+                                         "default")
+            db.log_event(self.conn, self.textlog, db.now(), "default_import",
+                         None, None, "operator", None,
+                         "catalog group %r: %d added" % (title, added))
             return None
 
     def remove_defaults(self):
@@ -655,8 +701,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             '<option value="%s"%s>%s</option>'
             % (v, " selected" if v == src else "", label)
             for v, label in (
-                ("", "all origins"), ("default", "default list"),
-                ("starter", "starter list"), ("user", "added by you"),
+                ("", "all origins"), ("starter", "default list"),
+                ("default", "catalog"), ("user", "added by you"),
             )
         )
         controls = (
@@ -688,7 +734,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             nav_parts.append('<a href="%s">Next &raquo;</a>' % esc(link(page + 1)))
         pager = "<p>%s</p>" % " &middot; ".join(nav_parts)
 
-        origin_label = {"default": "default", "starter": "starter",
+        origin_label = {"default": "catalog", "starter": "default",
                         "manual": "you", "approval": "you (approved)"}
         body = ["<h1>Active allowlist</h1>", controls, pager,
                 "<table><tr><th>Pattern</th><th>Kind"
@@ -878,38 +924,59 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _default_list_section(self):
         available, active = self.app.default_list_counts()
+        groups = self.app.catalog_groups()
+        csrf = esc(self._csrf())
         body = [
-            '<div class="card"><h1>Default list</h1>'
-            "<p class='meta'>A curated set of documentation, package-registry,"
-            " reference, and open-data hosts an agent commonly needs to read."
-            " Exact hostnames only — no wildcards — each judged by the"
-            " stranger-signup rule, with mail providers, webhook endpoints,"
-            " paste sites, URL shorteners, and tunnel vendors deliberately"
-            " absent. Every entry carries a one-line description of what the"
-            " host is. Loading adds permanent entries with origin"
-            " &ldquo;default&rdquo; and only adds what is missing — nothing"
-            " you have is overwritten; revoke any entry individually, or the"
-            " whole set below.</p>"
+            '<div class="card"><h1>Shipped lists</h1>'
+            "<p class='meta'><strong>Default list</strong> — the handful of"
+            " hosts this guide's own flows need, loaded automatically at"
+            " install (origin &ldquo;default&rdquo;). After an erase, this"
+            " button is the restore; it only adds what is missing.</p>"
+            '<form method="post" action="/load-shipped">'
+            '<input type="hidden" name="csrf" value="%s">'
+            "<p><button>Load the default list</button></p></form>" % csrf,
+            "<p class='meta'><strong>Catalog</strong> — a curated set of"
+            " documentation, package-registry, reference, and open-data"
+            " hosts an agent commonly needs to read. Exact hostnames only —"
+            " no wildcards — each judged by the stranger-signup rule, each"
+            " with a one-line description. Load it whole, or open a group"
+            " to see its domains and load just that group (origin"
+            " &ldquo;catalog&rdquo;). Loading only adds what is missing;"
+            " revoke any entry individually, or the whole catalog.</p>",
         ]
         if available is None:
             body.append(
-                "<p class='meta'>No default list file is installed;"
-                " rerun install.sh to stage it.</p>"
+                "<p class='meta'>No catalog file is installed;"
+                " rerun the installer to stage it.</p>"
             )
         else:
             body.append(
                 '<form method="post" action="/import-defaults">'
                 '<input type="hidden" name="csrf" value="%s">'
-                "<p><button>Load defaults (%d hosts)</button></p></form>"
-                % (esc(self._csrf()), available)
+                "<p><button>Load the whole catalog (%d hosts)</button>"
+                "</p></form>" % (csrf, available)
             )
         if active:
             body.append(
                 '<form method="post" action="/remove-defaults">'
                 '<input type="hidden" name="csrf" value="%s">'
-                "<p><button>Remove all imported default entries"
-                " (%d active)</button></p></form>"
-                % (esc(self._csrf()), active)
+                "<p><button>Remove all catalog entries"
+                " (%d active)</button></p></form>" % (csrf, active)
+            )
+        for i, (title, entries) in enumerate(groups):
+            hosts = " &middot; ".join(
+                esc(h if p == 443 else "%s %d" % (h, p))
+                for h, p, _ in entries
+            )
+            body.append(
+                "<details><summary><strong>%s</strong> &mdash; %d hosts"
+                "</summary>"
+                '<form method="post" action="/import-catalog-group">'
+                '<input type="hidden" name="csrf" value="%s">'
+                '<input type="hidden" name="group" value="%d">'
+                "<p><button>Load this group</button></p></form>"
+                "<p class='meta'>%s</p></details>"
+                % (esc(title), len(entries), csrf, i, hosts)
             )
         body.append("</div>")
         return "".join(body)
@@ -971,6 +1038,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._page("<p class='error'>%s</p>" % esc(error), 400)
             else:
                 self._headers(303, {"Location": "/allowlist"})
+        elif path == "/load-shipped":
+            added, error = self.app.load_shipped()
+            if error:
+                self._add_page(error=error)
+            else:
+                self._headers(303, {"Location": "/allowlist"})
+        elif path == "/import-catalog-group":
+            error = self.app.import_catalog_group(self._int(form.get("group")))
+            if error:
+                self._add_page(error=error)
+            else:
+                self._headers(303, {"Location": "/allowlist"})
         elif path == "/import-defaults":
             error = self.app.import_defaults()
             if error:
@@ -994,8 +1073,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "<p>This revokes all %d active entries — defaults, starter,"
                 " and everything you added. The agent then reaches nothing"
                 " until entries are approved again. The activity log keeps"
-                " the history, and <strong>Load defaults</strong> on the Add"
-                " page restores the shipped list afterwards.</p>"
+                " the history, and the Add page's <strong>load</strong>"
+                " buttons restore the shipped lists afterwards.</p>"
                 '<p><a href="/allowlist">Cancel</a></p></div>'
                 '<form method="post" action="/erase-confirm">'
                 '<input type="hidden" name="csrf" value="%s">'

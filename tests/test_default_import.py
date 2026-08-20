@@ -210,7 +210,7 @@ class PanelDefaultImport(unittest.TestCase):
     def test_add_page_offers_import_with_count(self):
         cookie, _ = self.login()
         _, body = self.request("GET", "/add", cookie=cookie)
-        self.assertIn("Load defaults (3 hosts)", body)
+        self.assertIn("Load the whole catalog (3 hosts)", body)
         self.assertNotIn("Remove all imported", body)
 
     def test_import_then_remove_via_panel(self):
@@ -221,7 +221,7 @@ class PanelDefaultImport(unittest.TestCase):
         ts = db.now()
         self.assertEqual(db.active_count_by_source(self.app.conn, "default", ts), 3)
         _, body = self.request("GET", "/add", cookie=cookie)
-        self.assertIn("Remove all imported default entries (3 active)", body)
+        self.assertIn("Remove all catalog entries (3 active)", body)
         events = [r["event"] for r in db.recent_events(self.app.conn)]
         self.assertIn("default_import", events)
 
@@ -251,7 +251,7 @@ class PanelDefaultImport(unittest.TestCase):
         self.assertEqual(response.status, 200)
         self.assertIn("no default list file", body)
         _, body = self.request("GET", "/add", cookie=cookie)
-        self.assertIn("No default list file is installed", body)
+        self.assertIn("No catalog file is installed", body)
 
     def test_bad_file_reports_line_and_imports_nothing(self):
         with open(self.list_path, "a", encoding="utf-8") as fh:

@@ -601,3 +601,24 @@ class ResolveBindIP(unittest.TestCase):
                 stdout = "100.64.0.9\n"
             return R()
         self.assertEqual(resolve_bind_ip("auto", run), "100.64.0.9")
+
+
+class PanelShippedRestore(PanelHarness):
+    def test_erase_then_load_shipped_restores_default_list(self):
+        import os as _os
+        self.app.cfg._data.setdefault("paths", {})["default_allowlist"] = \
+            _os.path.join(self.tmp, "default-allowlist.txt")
+        base = _os.path.dirname(self.app.cfg.get("paths", "default_allowlist"))
+        with open(_os.path.join(base, "starter-allowlist.txt"), "w") as fh:
+            fh.write("# Guide hosts\nrestoreme.example.com\n")
+        cookie, csrf = self.login()
+        self.request("POST", "/erase-confirm", {"csrf": csrf}, cookie)
+        self.assertEqual(db.count_allowlist(self.app.conn, db.now()), 0)
+        response, _ = self.request("POST", "/load-shipped",
+                                   {"csrf": csrf}, cookie)
+        self.assertEqual(response.status, 303)
+        row = self.app.conn.execute(
+            "SELECT source, note FROM allowlist WHERE pattern ="
+            " 'restoreme.example.com' AND expires_at IS NULL").fetchone()
+        self.assertEqual(row["source"], "starter")
+        self.assertEqual(row["note"], "Guide hosts")
