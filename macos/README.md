@@ -3,12 +3,12 @@
 Runs the whole agent-filter stack — Squid, broker, panel — on the Mac that
 hosts the agent VM, instead of inside the VM. Used by the root-agent setup
 guide (`mac-qemu-tailscale-setup-guide-acl--root.md`), where the VM's only
-network path is a QEMU `guestfwd` to Squid on the Mac's `127.0.0.1:8888`:
+network path is a QEMU `guestfwd` to Squid on the Mac's `127.0.0.1:9188`:
 
 ```text
 VM (any privilege, even root)
   -> QEMU user network, restrict=on          (only forwarded paths exist)
-  -> guestfwd 10.0.2.100:8888 -> Mac 127.0.0.1:8888 (Squid)
+  -> guestfwd 10.0.2.100:8888 -> Mac 127.0.0.1:9188 (Squid)
   -> broker allowlist check -> public Internet
 ```
 
