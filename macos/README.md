@@ -23,7 +23,9 @@ stops using the proxy simply loses all egress: fail closed.
 - Python comes from a venv built on Homebrew python3 (`/usr/bin/python3` is
   3.9 and lacks `tomllib`); the installer rewrites the `acl-helper` and
   `brokerctl` shebangs to the venv interpreter.
-- The panel binds the **Mac's** Tailscale IPv4 (port 9120). The VM cannot
+- The panel binds the **Mac's** Tailscale IPv4 (port 9120), resolved
+  live at every start (`bind_ip = "auto"`), so it follows the node
+  across IP changes. The VM cannot
   reach it: its only route is the guestfwd to Squid, and Squid refuses
   CONNECT to tailnet and private ranges.
 - State lives in `/usr/local/var/agent-filter/` (database, decision log,

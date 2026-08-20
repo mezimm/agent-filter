@@ -543,3 +543,61 @@ class PanelListIO(PanelHarness):
         self.assertIn("userentry.example.com", body)
         _, body = self.request("GET", "/allowlist?src=default", cookie=cookie)
         self.assertNotIn("userentry.example.com", body)
+
+
+class ResolveBindIP(unittest.TestCase):
+    """bind_ip 'auto' resolves through the tailscale CLI, CGNAT-validated."""
+
+    @staticmethod
+    def _runner(stdout="", returncode=0, raises=None):
+        calls = []
+
+        def run(args, **kwargs):
+            calls.append(args)
+            if raises:
+                raise raises
+            class R:
+                pass
+            r = R()
+            r.returncode = returncode
+            r.stdout = stdout
+            return r
+        run.calls = calls
+        return run
+
+    def test_literal_passes_through_without_cli(self):
+        from approval_broker.panel import resolve_bind_ip
+        runner = self._runner()
+        self.assertEqual(resolve_bind_ip("100.1.2.3", runner), "100.1.2.3")
+        self.assertEqual(runner.calls, [])
+
+    def test_auto_returns_cgnat_address(self):
+        from approval_broker.panel import resolve_bind_ip
+        runner = self._runner(stdout="100.101.102.103\nfd7a::1\n")
+        self.assertEqual(resolve_bind_ip("auto", runner), "100.101.102.103")
+
+    def test_auto_refuses_non_tailscale_address(self):
+        from approval_broker.panel import resolve_bind_ip
+        runner = self._runner(stdout="192.168.1.5\n")
+        with self.assertRaises(SystemExit):
+            resolve_bind_ip("auto", runner)
+
+    def test_auto_fails_loudly_when_no_cli_answers(self):
+        from approval_broker.panel import resolve_bind_ip
+        runner = self._runner(raises=OSError("no such file"))
+        with self.assertRaises(SystemExit):
+            resolve_bind_ip("auto", runner)
+
+    def test_auto_skips_failing_candidates(self):
+        from approval_broker.panel import resolve_bind_ip
+        answers = [OSError("missing"), None]
+
+        def run(args, **kwargs):
+            step = answers.pop(0)
+            if step is not None:
+                raise step
+            class R:
+                returncode = 0
+                stdout = "100.64.0.9\n"
+            return R()
+        self.assertEqual(resolve_bind_ip("auto", run), "100.64.0.9")

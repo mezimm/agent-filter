@@ -10,6 +10,8 @@ reachability is not authorisation.
 
 import hmac
 import html
+import ipaddress
+import subprocess
 import http.cookies
 import http.server
 import secrets
@@ -1046,16 +1048,72 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._login_page("Wrong password.")
 
 
+# Where the tailscale CLI may live; PATH first, then the platform spots.
+TS_CLI_CANDIDATES = (
+    "tailscale",
+    "/usr/local/bin/tailscale",
+    "/opt/homebrew/bin/tailscale",
+    "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+    "/usr/bin/tailscale",
+    "/usr/sbin/tailscale",
+)
+
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")
+
+
+def resolve_bind_ip(value, runner=subprocess.run):
+    """Turn the configured panel.bind_ip into a concrete address.
+
+    The literal "auto" asks the tailscale CLI for the machine's current
+    Tailscale IPv4 at every service start, so the panel follows the node
+    across re-authentications and IP changes with no config edit. The
+    result must be a CGNAT (100.64/10) address — anything else means the
+    CLI answered with something that is not a tailnet address, and binding
+    it could expose the panel; fail loudly instead. Literal addresses pass
+    through and keep the historical checks in serve()."""
+    if value != "auto":
+        return value
+    for candidate in TS_CLI_CANDIDATES:
+        try:
+            proc = runner(
+                [candidate, "ip", "-4"],
+                capture_output=True, text=True, timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if proc.returncode != 0:
+            continue
+        ip = (proc.stdout or "").strip().splitlines()
+        ip = ip[0].strip() if ip else ""
+        if not ip:
+            continue
+        try:
+            if ipaddress.ip_address(ip) in _CGNAT:
+                return ip
+        except ValueError:
+            pass
+        raise SystemExit(
+            "panel.bind_ip auto: %r from the tailscale CLI is not a"
+            " Tailscale (100.64/10) address; refusing to bind it" % ip
+        )
+    raise SystemExit(
+        "panel.bind_ip auto: no working tailscale CLI answered; is"
+        " Tailscale installed and signed in? (retrying via the service"
+        " manager is expected until it is)"
+    )
+
+
 def serve(cfg=None):
     cfg = cfg or config.load()
-    bind_ip = cfg.get("panel", "bind_ip")
+    bind_ip = resolve_bind_ip(cfg.get("panel", "bind_ip"))
     # Refuse loopback or an unset address: the panel is worthless if the agent
     # can reach it, and a config that failed to record the Tailscale IP must
     # not silently degrade to 127.0.0.1.
     if not bind_ip or bind_ip.startswith("127.") or bind_ip in ("::1", "0.0.0.0"):
         raise SystemExit(
-            "panel.bind_ip must be the VM's Tailscale IPv4, not %r; "
-            "check /etc/approval-broker/config.toml" % bind_ip
+            "panel.bind_ip must be the machine's Tailscale IPv4 or"
+            " \"auto\", not %r; check /etc/approval-broker/config.toml"
+            % bind_ip
         )
     Handler.app = PanelApp(cfg)
     server = http.server.ThreadingHTTPServer(

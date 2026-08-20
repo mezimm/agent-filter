@@ -18,10 +18,13 @@ submit_socket = "/usr/local/var/agent-filter/submit.sock"
 acl_socket = "/usr/local/var/agent-filter/acl.sock"
 
 [panel]
-# The Mac's Tailscale IPv4 only — never loopback and never 0.0.0.0. The VM
-# cannot reach this address: its only route out is the guestfwd to Squid,
-# and Squid refuses CONNECT to tailnet and private ranges.
-bind_ip = "@TAILSCALE_IP@"
+# "auto" resolves the Mac's current Tailscale IPv4 through the tailscale
+# CLI at every panel start, so the panel follows the node across IP
+# changes with no config edit. A literal 100.x address also works — never
+# loopback and never 0.0.0.0. The VM cannot reach this address either
+# way: its only route out is the guestfwd to Squid, and Squid refuses
+# CONNECT to tailnet and private ranges.
+bind_ip = "auto"
 port = 9120
 session_hours = 12
 
