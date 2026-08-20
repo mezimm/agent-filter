@@ -9,6 +9,8 @@ network path is a QEMU `guestfwd` to Squid on the Mac's `127.0.0.1:9188`:
 VM (any privilege, even root)
   -> QEMU user network, restrict=on          (only forwarded paths exist)
   -> guestfwd 10.0.2.100:8888 -> Mac 127.0.0.1:9188 (Squid)
+     (a second guestfwd, 10.0.2.100:8889, bridges the broker's submit
+      socket so the agent can request approvals with a reason)
   -> broker allowlist check -> public Internet
 ```
 
