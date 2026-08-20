@@ -18,7 +18,7 @@ One thing agent-filter cannot do alone: the agent's machine must be wired so thi
 
 ## What's in the box
 
-- A starter list, plus ~2,500 optional pre-approved hosts — package registries, model providers, documentation — each with a one-line description of what it is, so day one is not fifty prompts.
+- A pre-installed default list, plus an optional ~2,500-host catalog in fifteen loadable groups — package registries, model providers, documentation — each host with a one-line description, so day one is not fifty prompts.
 - Approvals with expiry (once / session / 24 hours / permanent) and one-click revoke.
 - A pause switch for install bursts: open the gate 15 or 60 minutes, everything still logged.
 - Export, paste-import (refused lines are listed with reasons), and a confirm-guarded erase.
@@ -38,7 +38,7 @@ brokerctl set-password
 brew services restart squid
 ```
 
-The installer prints the panel's address at the end — open it, log in with the password you just set, and press **Load defaults**.
+The installer prints the panel's address at the end — open it, log in with the password you just set, and load the **catalog** (whole, or just the groups you need).
 
 A Linux, inside-the-VM variant also ships: `sudo ./install.sh` with the `systemd/` units.
 
