@@ -89,9 +89,10 @@ if [[ -n "$TAILSCALE_BIN" ]]; then
   TAILSCALE_IP="$(sudo -u "$RUN_USER" "$TAILSCALE_BIN" ip -4 2>/dev/null | head -n1 || true)"
 fi
 if [[ -z "$TAILSCALE_IP" ]]; then
-  echo "Could not detect the Mac's Tailscale IPv4 (is Tailscale installed" >&2
-  echo "and signed in?). The panel must bind that address, never 0.0.0.0." >&2
-  exit 1
+  echo "note: no Tailscale IPv4 detected (not installed or not signed in)." >&2
+  echo "The panel resolves the address itself at every start (bind_ip auto)" >&2
+  echo "and simply retries until Tailscale is up." >&2
+  TAILSCALE_IP="<your-tailscale-ip>"
 fi
 sed "s/@TAILSCALE_IP@/$TAILSCALE_IP/" "$SRC/macos/config-macos.toml" \
   > "$ETC/config.toml"

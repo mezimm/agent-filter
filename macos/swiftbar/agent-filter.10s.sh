@@ -23,6 +23,26 @@ ME_UID="$(/usr/bin/id -u)"
 vm_installed() { [[ -x "$VMDIR/start-agent-1.sh" ]]; }
 vm_running()   { [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
 fw_installed() { [[ -d "$LIB" ]]; }
+
+# The panel's address, resolved live: the current Tailscale IPv4 first (so
+# the link follows the node across IP changes), the config's literal
+# bind_ip as fallback, nothing if neither answers.
+panel_url() {
+  local ip="" tsbin port
+  for tsbin in /usr/local/bin/tailscale /opt/homebrew/bin/tailscale \
+      /Applications/Tailscale.app/Contents/MacOS/Tailscale; do
+    [[ -x "$tsbin" ]] || continue
+    ip="$("$tsbin" ip -4 2>/dev/null | /usr/bin/head -n1)"
+    [[ -n "$ip" ]] && break
+  done
+  if [[ -z "$ip" ]]; then
+    ip="$(/usr/bin/awk -F'"' '/^bind_ip/ {print $2}' "$CONF" 2>/dev/null)"
+    [[ "$ip" == "auto" ]] && ip=""
+  fi
+  [[ -z "$ip" ]] && return
+  port="$(/usr/bin/awk '$1 == "port" {print $3; exit}' "$CONF" 2>/dev/null)"
+  echo "http://$ip:${port:-9120}"
+}
 squid_up()     { /usr/bin/pgrep -qx squid; }
 broker_up()    { /usr/bin/pgrep -qf approval_broker.broker; }
 panel_up()     { /usr/bin/pgrep -qf approval_broker.panel; }
@@ -123,8 +143,12 @@ if fw_installed; then
   if [[ -n "$PENDING" && "$PENDING" != "0" ]]; then
     echo "$PENDING approval(s) waiting"
   fi
-  PANEL_IP="$(/usr/bin/awk -F'"' '/^bind_ip/ {print $2}' "$CONF" 2>/dev/null)"
-  [[ -n "$PANEL_IP" ]] && echo "Open approval panel | href=http://$PANEL_IP:9120"
+  PANEL_URL="$(panel_url)"
+  if [[ -n "$PANEL_URL" ]]; then
+    echo "Open filter panel | href=$PANEL_URL"
+  else
+    echo "Filter panel: waiting for Tailscale"
+  fi
   echo "Open Hermes dashboard | href=http://127.0.0.1:9119"
   if [[ "$FW_OK" == 1 ]]; then
     echo "Stop firewall (also stops autostart) | bash=\"$0\" param1=fw-stop terminal=false refresh=true"
