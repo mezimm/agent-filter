@@ -145,10 +145,22 @@ def _migrate(conn: sqlite3.Connection) -> None:
 def open_db(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.executescript(SCHEMA)
-    _migrate(conn)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.executescript(SCHEMA)
+        _migrate(conn)
+    except sqlite3.OperationalError as exc:
+        # Startup creates any table this version added, so a database the
+        # service account cannot write stops the service here instead of at
+        # the first approval. Name the file and the likely cause: the fix is
+        # ownership, not code, and an unhandled traceback hides that.
+        raise SystemExit(
+            "cannot open the database %s for writing (%s). The broker and"
+            " panel must be able to write it and its -wal/-shm siblings —"
+            " on macOS as your login account, on Linux as the broker"
+            " account; check their ownership and permissions." % (path, exc)
+        )
     return conn
 
 
