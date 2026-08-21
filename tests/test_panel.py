@@ -79,7 +79,7 @@ class PanelHarness(unittest.TestCase):
         self.assertEqual(response.status, 303)
         cookie = response.getheader("Set-Cookie").split(";")[0]
         token = cookie.split("=", 1)[1]
-        csrf = self.app.sessions[token]["csrf"]
+        csrf = self.app.session_for(token)["csrf"]
         return cookie, csrf
 
 
@@ -111,6 +111,86 @@ class PanelSecurity(PanelHarness):
         self.assertIn("HttpOnly", set_cookie)
         self.assertIn("SameSite=Strict", set_cookie)
         self.assertNotIn("Secure", set_cookie)  # HTTP over Tailscale by design
+
+    def test_session_cookie_lasts_thirty_days_by_default(self):
+        response, _ = self.request("POST", "/login", {"password": PASSWORD})
+        self.assertIn("Max-Age=%d" % (30 * 86400),
+                      response.getheader("Set-Cookie"))
+
+    def test_session_survives_panel_restart(self):
+        cookie, _ = self.login()
+        # A fresh PanelApp over the same database is what a service restart
+        # or a reboot produces; the phone's cookie must still be good.
+        restarted = PanelApp(self.cfg, conn=db.open_db(self.cfg.get("paths", "db")))
+        token = cookie.split("=", 1)[1]
+        self.assertIsNotNone(restarted.session_for(token))
+
+    def test_expired_session_is_refused_and_swept(self):
+        cookie, _ = self.login()
+        token = cookie.split("=", 1)[1]
+        self.app.conn.execute(
+            "UPDATE panel_sessions SET expires_at = ? WHERE token_hash = ?",
+            (db.now() - 1, db._session_key(token)),
+        )
+        self.app.conn.commit()
+        self.assertIsNone(self.app.session_for(token))
+        response, _ = self.request("GET", "/", cookie=cookie)
+        self.assertEqual(response.status, 303)
+        self.login()  # the next login sweeps expired rows
+        gone = self.app.conn.execute(
+            "SELECT 1 FROM panel_sessions WHERE token_hash = ?",
+            (db._session_key(token),),
+        ).fetchone()
+        self.assertIsNone(gone)
+
+    def test_tokens_are_stored_hashed(self):
+        cookie, _ = self.login()
+        token = cookie.split("=", 1)[1]
+        stored = [r[0] for r in self.app.conn.execute(
+            "SELECT token_hash FROM panel_sessions")]
+        self.assertNotIn(token, stored)
+        self.assertIn(db._session_key(token), stored)
+
+    def test_logout_removes_session_everywhere(self):
+        cookie, csrf = self.login()
+        token = cookie.split("=", 1)[1]
+        response, _ = self.request("POST", "/logout", {"csrf": csrf}, cookie)
+        self.assertEqual(response.status, 303)
+        self.assertIn("Max-Age=0", response.getheader("Set-Cookie"))
+        self.assertIsNone(self.app.session_for(token))
+
+    def test_password_change_signs_every_device_out(self):
+        first, _ = self.login()
+        second, _ = self.login()
+        db.clear_sessions(self.app.conn)  # what brokerctl set-password does
+        for cookie in (first, second):
+            response, _ = self.request("GET", "/", cookie=cookie)
+            self.assertEqual(response.status, 303)
+
+    def test_pages_are_mobile_ready(self):
+        # A viewport meta is what stops phones rendering the page at desktop
+        # width and shrinking it to a thumbnail; every page shares one shell.
+        for path, cookie in (("/login", None), ("/", self.login()[0])):
+            _, body = self.request("GET", path, cookie=cookie)
+            self.assertIn('name="viewport"', body)
+            self.assertIn('content="width=device-width, initial-scale=1"', body)
+            self.assertIn('<html lang="en">', body)
+        response, css = self.request("GET", "/style.css")
+        self.assertIn("text/css", response.getheader("Content-Type"))
+        self.assertIn("@media (max-width:", css)
+        self.assertIn("prefers-color-scheme: dark", css)
+
+    def test_nav_marks_current_page_and_pending_count(self):
+        cookie, csrf = self.login()
+        self.request("POST", "/add", {"csrf": csrf, "scope": "permanent",
+                                      "pattern": "labelled.example.com"}, cookie)
+        _, body = self.request("GET", "/allowlist", cookie=cookie)
+        self.assertIn('<a href="/allowlist" class="active" aria-current="page">',
+                      body)
+        self.assertNotIn('<a href="/" class="active"', body)
+        # Tables carry their header in every cell so the narrow-screen
+        # layout can label the stacked rows.
+        self.assertIn('data-label="Pattern"', body)
 
     def test_script_rationale_renders_inert(self):
         self.broker.submit(

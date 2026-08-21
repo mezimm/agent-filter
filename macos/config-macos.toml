@@ -26,7 +26,11 @@ acl_socket = "/usr/local/var/agent-filter/acl.sock"
 # CONNECT to tailnet and private ranges.
 bind_ip = "auto"
 port = 9120
-session_hours = 12
+# Panel logins stay valid this long (720 = 30 days); the login cookie
+# carries the same lifetime, so a phone stays signed in across browser
+# restarts and panel restarts. `brokerctl set-password` signs every
+# device out.
+session_hours = 720
 
 [limits]
 pending_max = 20

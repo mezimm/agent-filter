@@ -51,9 +51,11 @@ def set_password(cfg):
         sys.exit("Use at least 8 characters.")
     conn = db.open_db(cfg.get("paths", "db"))
     db.set_setting(conn, "panel_password_hash", PasswordHasher().hash(first))
+    # Logins persist for weeks; a new password must end the old ones.
+    db.clear_sessions(conn)
     conn.close()
     _fix_ownership(cfg.get("paths", "db"))
-    print("Panel password updated.")
+    print("Panel password updated; every signed-in device must log in again.")
 
 
 def load_starter(cfg, path):

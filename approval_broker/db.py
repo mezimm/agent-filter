@@ -5,6 +5,7 @@ lets the panel and broker share the file. The decisions table is append-only —
 there is deliberately no update or delete helper for it.
 """
 
+import hashlib
 import os
 import sqlite3
 import time
@@ -64,6 +65,14 @@ CREATE TABLE IF NOT EXISTS decisions (
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS panel_sessions (
+  -- SHA-256 of the cookie token, never the token itself: a copy of this
+  -- file must not be a bag of live logins.
+  token_hash TEXT PRIMARY KEY,
+  csrf TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_requests_hostport ON requests (host, port);
 CREATE INDEX IF NOT EXISTS idx_decisions_ts ON decisions (ts);
@@ -710,4 +719,51 @@ def set_setting(conn, key, value):
         " ON CONFLICT (key) DO UPDATE SET value = excluded.value",
         (key, value),
     )
+    conn.commit()
+
+
+# -- panel sessions -----------------------------------------------------------
+# Logins live here rather than in panel memory so a service restart or reboot
+# does not sign every device out; the cookie carries the same lifetime.
+
+
+def _session_key(token):
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_session(conn, token, csrf, ts, expires_at):
+    conn.execute(
+        "DELETE FROM panel_sessions WHERE expires_at <= ?", (ts,)
+    )
+    conn.execute(
+        "INSERT INTO panel_sessions (token_hash, csrf, created_at, expires_at)"
+        " VALUES (?, ?, ?, ?)",
+        (_session_key(token), csrf, ts, expires_at),
+    )
+    conn.commit()
+
+
+def get_session(conn, token, ts):
+    """{'csrf', 'expires'} for a live session, else None. Expired rows are
+    simply not matched; the next login sweeps them."""
+    row = conn.execute(
+        "SELECT csrf, expires_at FROM panel_sessions"
+        " WHERE token_hash = ? AND expires_at > ?",
+        (_session_key(token), ts),
+    ).fetchone()
+    if row is None:
+        return None
+    return {"csrf": row["csrf"], "expires": row["expires_at"]}
+
+
+def delete_session(conn, token):
+    conn.execute(
+        "DELETE FROM panel_sessions WHERE token_hash = ?", (_session_key(token),)
+    )
+    conn.commit()
+
+
+def clear_sessions(conn):
+    """Sign every device out — the companion to a password change."""
+    conn.execute("DELETE FROM panel_sessions")
     conn.commit()

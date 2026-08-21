@@ -16,7 +16,11 @@ acl_socket = "/run/approval-broker/acl.sock"
 # loopback) and never 0.0.0.0.
 bind_ip = "@TAILSCALE_IP@"
 port = 9120
-session_hours = 12
+# Panel logins stay valid this long (720 = 30 days); the login cookie
+# carries the same lifetime, so a phone stays signed in across browser
+# restarts and panel restarts. `brokerctl set-password` signs every
+# device out.
+session_hours = 720
 
 [limits]
 # Spec section 10. Pending cap stops queue-flooding into rubber-stamping;
