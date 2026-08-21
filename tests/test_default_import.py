@@ -205,7 +205,7 @@ class PanelDefaultImport(unittest.TestCase):
         response, _ = self.request("POST", "/login", {"password": PASSWORD})
         cookie = response.getheader("Set-Cookie").split(";")[0]
         token = cookie.split("=", 1)[1]
-        return cookie, self.app.sessions[token]["csrf"]
+        return cookie, self.app.session_for(token)["csrf"]
 
     def test_add_page_offers_import_with_count(self):
         cookie, _ = self.login()

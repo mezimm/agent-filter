@@ -25,7 +25,9 @@ DEFAULTS = {
         # silently fall back to loopback, where the agent could reach it.
         "bind_ip": None,
         "port": 9120,
-        "session_hours": 12,
+        # Panel logins last this long (720 = 30 days); the cookie carries the
+        # same lifetime, so a phone stays signed in across browser restarts.
+        "session_hours": 720,
     },
     "limits": {
         "pending_max": 20,

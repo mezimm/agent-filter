@@ -136,7 +136,6 @@ class PanelApp:
             cfg.get("log", "rotate_bytes"),
             cfg.get("log", "keep"),
         )
-        self.sessions = {}
         self.login_failures = []
 
     # -- auth ------------------------------------------------------------
@@ -160,30 +159,32 @@ class PanelApp:
         self.login_failures = [t for t in self.login_failures if t > cutoff]
         return len(self.login_failures) >= LOGIN_MAX_FAILURES
 
+    def session_seconds(self) -> int:
+        """Login lifetime; the cookie's Max-Age and the stored expiry agree."""
+        return int(self.cfg.get("panel", "session_hours") * 3600)
+
     def new_session(self) -> str:
+        """Sessions persist in the database (hashed) so a panel restart or a
+        reboot does not sign every device out mid-month; a fixed expiry from
+        login, not sliding, so a stolen cookie has a known last day."""
         token = secrets.token_urlsafe(32)
-        self.sessions[token] = {
-            "expires": time.time()
-            + self.cfg.get("panel", "session_hours") * 3600,
-            "csrf": secrets.token_urlsafe(32),
-        }
+        with self.lock:
+            ts = db.now()
+            db.create_session(
+                self.conn, token, secrets.token_urlsafe(32), ts,
+                ts + self.session_seconds(),
+            )
         return token
 
     def session_for(self, token):
         if not token:
             return None
-        for known, data in list(self.sessions.items()):
-            if data["expires"] < time.time():
-                del self.sessions[known]
-        for known, data in self.sessions.items():
-            if hmac.compare_digest(known, token):
-                return data
-        return None
+        return db.get_session(self.conn, token, db.now())
 
     def drop_session(self, token):
-        for known in list(self.sessions):
-            if token and hmac.compare_digest(known, token):
-                del self.sessions[known]
+        if token:
+            with self.lock:
+                db.delete_session(self.conn, token)
 
     # -- expiry mapping (spec section 11.6) ------------------------------
 
@@ -1114,10 +1115,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.app.check_password(form.get("password", "")):
             self.app.login_failures.clear()
             token = self.app.new_session()
+            # Max-Age makes the cookie outlive the browser tab; without it
+            # phones forget the login every time the browser is closed.
             self._headers(303, {
                 "Location": "/",
-                "Set-Cookie": "%s=%s; HttpOnly; SameSite=Strict; Path=/"
-                % (SESSION_COOKIE, token),
+                "Set-Cookie": "%s=%s; Max-Age=%d; HttpOnly; SameSite=Strict;"
+                " Path=/" % (SESSION_COOKIE, token, self.app.session_seconds()),
             })
             return
         self.app.login_failures.append(time.time())
