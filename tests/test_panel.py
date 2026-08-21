@@ -669,6 +669,7 @@ class ResolveBindIP(unittest.TestCase):
             r = R()
             r.returncode = returncode
             r.stdout = stdout
+            r.stderr = ""
             return r
         run.calls = calls
         return run
@@ -700,11 +701,34 @@ class ResolveBindIP(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             resolve_bind_ip("auto", runner)
         message = str(ctx.exception)
-        self.assertIn("is the Tailscale app running", message)
+        self.assertIn("Is the Tailscale app running", message)
         self.assertIn("GUI failed to start", message)
         self.assertNotIn("refusing to bind", message)
+        # one grouped clause, not the same sentence once per CLI path
+        self.assertEqual(message.count("GUI failed to start"), 1)
+        self.assertIn("other paths", message)
         # every candidate was tried, none accepted as an address
         self.assertEqual(len(runner.calls), len(TS_CLI_CANDIDATES))
+
+    def test_auto_reports_why_each_candidate_failed(self):
+        # The message has to carry the CLI's own words: a service manager
+        # being refused looks nothing like Tailscale being signed out, and
+        # only one of the two is fixed by waiting.
+        from approval_broker.panel import resolve_bind_ip
+        runner = self._runner(stdout="", returncode=1)
+        runner_with_stderr = runner
+
+        def run(args, **kwargs):
+            r = runner_with_stderr(args, **kwargs)
+            r.stderr = "failed to connect to local tailscaled"
+            return r
+        run.calls = runner.calls
+        with self.assertRaises(SystemExit) as ctx:
+            resolve_bind_ip("auto", run)
+        message = str(ctx.exception)
+        self.assertIn("exit 1", message)
+        self.assertIn("failed to connect to local tailscaled", message)
+        self.assertIn("literal 100.x address", message)
 
     def test_auto_fails_loudly_when_no_cli_answers(self):
         from approval_broker.panel import resolve_bind_ip
@@ -723,6 +747,7 @@ class ResolveBindIP(unittest.TestCase):
             class R:
                 returncode = 0
                 stdout = "100.64.0.9\n"
+                stderr = ""
             return R()
         self.assertEqual(resolve_bind_ip("auto", run), "100.64.0.9")
 
