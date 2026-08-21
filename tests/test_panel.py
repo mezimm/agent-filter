@@ -167,6 +167,31 @@ class PanelSecurity(PanelHarness):
             response, _ = self.request("GET", "/", cookie=cookie)
             self.assertEqual(response.status, 303)
 
+    def test_pages_are_mobile_ready(self):
+        # A viewport meta is what stops phones rendering the page at desktop
+        # width and shrinking it to a thumbnail; every page shares one shell.
+        for path, cookie in (("/login", None), ("/", self.login()[0])):
+            _, body = self.request("GET", path, cookie=cookie)
+            self.assertIn('name="viewport"', body)
+            self.assertIn('content="width=device-width, initial-scale=1"', body)
+            self.assertIn('<html lang="en">', body)
+        response, css = self.request("GET", "/style.css")
+        self.assertIn("text/css", response.getheader("Content-Type"))
+        self.assertIn("@media (max-width:", css)
+        self.assertIn("prefers-color-scheme: dark", css)
+
+    def test_nav_marks_current_page_and_pending_count(self):
+        cookie, csrf = self.login()
+        self.request("POST", "/add", {"csrf": csrf, "scope": "permanent",
+                                      "pattern": "labelled.example.com"}, cookie)
+        _, body = self.request("GET", "/allowlist", cookie=cookie)
+        self.assertIn('<a href="/allowlist" class="active" aria-current="page">',
+                      body)
+        self.assertNotIn('<a href="/" class="active"', body)
+        # Tables carry their header in every cell so the narrow-screen
+        # layout can label the stacked rows.
+        self.assertIn('data-label="Pattern"', body)
+
     def test_script_rationale_renders_inert(self):
         self.broker.submit(
             {"host": "inert.example.com", "port": 443,

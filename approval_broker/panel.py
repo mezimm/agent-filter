@@ -34,50 +34,232 @@ LOGIN_MAX_FAILURES = 5
 LOGIN_LOCKOUT_SECONDS = 60
 
 CSS = """
-body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 60rem;
-       color: #1a1a1a; background: #fafafa; padding: 0 1rem; }
-nav a { margin-right: 1.2rem; }
-nav form { display: inline; }
-h1 { font-size: 1.3rem; }
-.host { font-size: 1.25rem; font-weight: 700; }
-.card { border: 1px solid #ccc; background: #fff; border-radius: 6px;
-        padding: 1rem; margin: 1rem 0; }
-.untrusted { border: 2px solid #b00; background: #fff5f5; padding: .6rem;
-             margin: .6rem 0; }
-.untrusted .label { color: #b00; font-weight: 700; font-size: .75rem;
-                    letter-spacing: .05em; }
-.untrusted pre { margin: .4rem 0 0; white-space: pre-wrap; word-break: break-word;
-                 font-size: .9rem; }
-.meta { color: #555; font-size: .85rem; }
-.wildcard { background: #8a2be2; color: #fff; padding: .1rem .4rem;
-            border-radius: 4px; font-size: .75rem; }
-.warn { border: 2px solid #b00; background: #fff5f5; padding: 1rem; }
-.banner { border: 2px solid #b00; background: #b00; color: #fff; padding: .6rem 1rem;
-          border-radius: 6px; font-weight: 600; }
-.danger { border: 4px solid #700; background: #b00; color: #fff; padding: 1rem 1.2rem;
-          border-radius: 6px; margin: 0 0 1.2rem; font-size: 1.05rem; }
-.danger .danger-title { margin: 0 0 .6rem; font-size: 1.2rem; font-weight: 800;
+:root {
+  color-scheme: light dark;
+  --bg: #f3f5f8; --surface: #ffffff; --surface-2: #f7f8fa;
+  --text: #17202a; --muted: #5b6673; --line: #d8dee6;
+  --accent: #1f5fbf; --accent-soft: #e6eefc;
+  --ok: #1b7f3b; --ok-soft: #e4f5e9;
+  --danger: #b3261e; --danger-soft: #fdecea; --danger-deep: #7a1711;
+  --purple: #6f3cc7; --purple-soft: #efe7fc;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .04);
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1419; --surface: #171d25; --surface-2: #1d242e;
+    --text: #e6eaf0; --muted: #9aa6b5; --line: #2b3541;
+    --accent: #7aa7ef; --accent-soft: #1b2a44;
+    --ok: #4fbf73; --ok-soft: #14301d;
+    --danger: #ff7b72; --danger-soft: #3a1815;
+    --purple: #b693f5; --purple-soft: #2a1f45;
+    --shadow: none;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+a { color: var(--accent); }
+h1 { font-size: 1.5rem; line-height: 1.25; margin: 0 0 1rem; }
+h2 { font-size: 1.1rem; line-height: 1.3; margin: 0 0 .6rem; }
+p { margin: 0 0 .8rem; }
+p:last-child { margin-bottom: 0; }
+code { font-size: .9em; background: var(--surface-2); padding: .05em .3em;
+       border-radius: 4px; }
+.wrap { max-width: 64rem; margin: 0 auto; padding: 1.25rem 1rem 4rem; }
+
+/* -- header / navigation ------------------------------------------------- */
+.top { background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-inner {
+  max-width: 64rem; margin: 0 auto; padding: .6rem 1rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem;
+}
+.brand { font-weight: 800; letter-spacing: .01em; text-decoration: none;
+         color: var(--text); font-size: 1.05rem; }
+.brand span { color: var(--accent); }
+nav { display: flex; gap: .25rem; flex: 1 1 auto; overflow-x: auto;
+      scrollbar-width: none; }
+nav::-webkit-scrollbar { display: none; }
+nav a {
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .45rem .85rem; border-radius: 999px; text-decoration: none;
+  color: var(--muted); font-weight: 600; white-space: nowrap;
+}
+nav a:hover { background: var(--surface-2); color: var(--text); }
+nav a.active { background: var(--accent-soft); color: var(--accent); }
+nav .count {
+  background: var(--danger); color: #fff; border-radius: 999px;
+  font-size: .72rem; line-height: 1; padding: .25em .55em; font-weight: 700;
+}
+.logout { margin-left: auto; }
+@media (min-width: 640px) {
+  .top { position: sticky; top: 0; z-index: 10; }
+}
+@media (max-width: 639px) {
+  .top-inner { padding: .5rem .75rem; }
+  .brand { order: 1; }
+  .logout { order: 2; }
+  nav { order: 3; flex-basis: 100%; margin: 0 -.75rem; padding: 0 .75rem; }
+}
+
+/* -- cards and blocks ---------------------------------------------------- */
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 1.1rem 1.2rem; margin: 0 0 1rem;
+}
+.card > h2:first-child, .card > h1:first-child { margin-top: 0; }
+.meta { color: var(--muted); font-size: .875rem; }
+.empty { color: var(--muted); text-align: center; padding: 2.5rem 1rem; }
+.host { font-size: 1.25rem; font-weight: 700; overflow-wrap: anywhere;
+        margin: 0 0 .25rem; }
+.pattern { font-weight: 600; overflow-wrap: anywhere; }
+.untrusted {
+  border: 2px solid var(--danger); background: var(--danger-soft);
+  border-radius: 8px; padding: .7rem .85rem; margin: .8rem 0;
+}
+.untrusted .label { display: block; color: var(--danger); font-weight: 700;
+                    font-size: .72rem; letter-spacing: .06em; }
+.untrusted pre { margin: .4rem 0 0; white-space: pre-wrap;
+                 overflow-wrap: anywhere; font-size: .9rem; }
+.badge { display: inline-block; padding: .1rem .5rem; border-radius: 999px;
+         font-size: .72rem; font-weight: 700; letter-spacing: .04em;
+         vertical-align: middle; }
+.wildcard { background: var(--purple-soft); color: var(--purple); }
+.warn { border: 2px solid var(--danger); background: var(--surface);
+        border-radius: var(--radius); padding: 1.2rem; }
+.banner { background: var(--danger-deep); color: #fff; padding: .75rem 1rem;
+          border-radius: var(--radius); font-weight: 600; margin: 0 0 1rem; }
+.danger {
+  border: 3px solid var(--danger-deep); background: #b3261e; color: #fff;
+  padding: 1rem 1.2rem; border-radius: var(--radius); margin: 0 0 1.2rem;
+}
+.danger .danger-title { margin: 0 0 .6rem; font-size: 1.1rem; font-weight: 800;
                         text-transform: uppercase; letter-spacing: .08em; }
 .danger a { color: #fff; font-weight: 700; }
-table { border-collapse: collapse; width: 100%; }
-td, th { border-bottom: 1px solid #ddd; padding: .4rem .5rem; text-align: left;
-         font-size: .9rem; }
-button { padding: .35rem .8rem; }
-.error { color: #b00; font-weight: 600; }
-input[type=text], input[type=password] { padding: .35rem; width: 20rem; }
+.danger button { background: #fff; color: #b3261e; border-color: #fff; }
+.error { background: var(--danger-soft); color: var(--danger);
+         border: 1px solid var(--danger); border-radius: 8px;
+         padding: .7rem .9rem; font-weight: 600; margin: 0 0 1rem; }
+details { border-top: 1px solid var(--line); padding: .6rem 0; }
+details:last-child { padding-bottom: 0; }
+summary { cursor: pointer; padding: .3rem 0; }
+summary::marker { color: var(--muted); }
+.hosts { overflow-wrap: anywhere; }
+
+/* -- forms ---------------------------------------------------------------- */
+input[type=text], input[type=password], select, textarea {
+  font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: .55rem .7rem; min-height: 2.6rem; width: 100%; max-width: 100%;
+}
+textarea { min-height: 8rem; font-family: ui-monospace, Menlo, monospace;
+           font-size: .9rem; }
+input:focus, select:focus, textarea:focus, button:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+button {
+  font: inherit; font-weight: 600; cursor: pointer;
+  min-height: 2.6rem; padding: .5rem 1rem; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text);
+}
+button:hover { background: var(--surface-2); }
+.btn-primary { background: var(--accent); border-color: var(--accent);
+               color: #fff; }
+.btn-primary:hover { filter: brightness(1.08); background: var(--accent); }
+.btn-approve { background: #1b7f3b; border-color: #1b7f3b; color: #fff; }
+.btn-approve:hover { background: #1b7f3b; filter: brightness(1.1); }
+.btn-deny { background: transparent; border-color: var(--danger);
+            color: var(--danger); }
+.btn-deny:hover { background: var(--danger-soft); }
+.btn-ghost { background: transparent; border-color: transparent;
+             color: var(--muted); }
+.btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+.btn-small { min-height: 2rem; padding: .25rem .7rem; font-size: .875rem; }
+.field { display: flex; flex-direction: column; gap: .3rem; }
+.field > span { font-size: .8rem; font-weight: 600; color: var(--muted); }
+.field small { font-weight: 400; }
+.row { display: flex; flex-wrap: wrap; gap: .7rem; align-items: flex-end; }
+.row > .field { flex: 1 1 12rem; }
+.row > .field.narrow { flex: 0 1 11rem; }
+.row > button { flex: 0 0 auto; }
+.stack { display: flex; flex-direction: column; gap: .8rem; }
+.choices { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; }
+.choices label { display: inline-flex; align-items: center; gap: .45rem;
+                 cursor: pointer; }
+.actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+/* Deny comes first in the DOM (Enter in the reason box must deny, never
+   approve); the column is reversed so Approve still reads first. */
+.decide { display: flex; flex-direction: column-reverse; gap: .7rem;
+          margin-top: .8rem; }
+@media (max-width: 639px) {
+  .row > *, .row > .field.narrow, .actions > button { flex: 1 1 100%; }
+  .row > button, .actions > button { width: 100%; }
+}
+@media (pointer: coarse) {
+  button, input[type=text], input[type=password], select { min-height: 2.8rem; }
+}
+
+/* -- login ---------------------------------------------------------------- */
+.login { max-width: 24rem; margin: 8vh auto 0; }
+.login h1 { margin-bottom: .2rem; }
+.login form { margin-top: 1.2rem; }
+.login button { width: 100%; margin-top: .8rem; }
+
+/* -- tables ---------------------------------------------------------------- */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch;
+              margin: 0 0 1rem; }
+table { border-collapse: collapse; width: 100%; background: var(--surface);
+        border: 1px solid var(--line); border-radius: var(--radius);
+        box-shadow: var(--shadow); }
+th, td { text-align: left; padding: .6rem .75rem; vertical-align: top;
+         border-bottom: 1px solid var(--line); font-size: .92rem; }
+th { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+     color: var(--muted); font-weight: 700; background: var(--surface-2); }
+tr:last-child td { border-bottom: 0; }
+td.cell-actions { text-align: right; white-space: nowrap; }
+td.cell-actions form { display: inline; }
+@media (max-width: 719px) {
+  table.collapse, table.collapse tbody { display: block; }
+  table.collapse thead { display: none; }
+  table.collapse tr { display: block; padding: .4rem .9rem; }
+  table.collapse tr + tr { border-top: 1px solid var(--line); }
+  table.collapse td { display: grid; grid-template-columns: 6.5rem 1fr;
+                      gap: .6rem; border: 0; padding: .3rem 0; }
+  table.collapse td::before { content: attr(data-label); font-size: .7rem;
+    text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+    font-weight: 700; padding-top: .2rem; }
+  table.collapse td.cell-actions { display: block; text-align: left;
+                                   padding-top: .5rem; }
+  table.collapse td.cell-actions::before { display: none; }
+  table.collapse td:empty { display: none; }
+}
+
+/* -- pager / filters -------------------------------------------------------- */
+.pager { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center;
+         justify-content: space-between; margin: 0 0 1rem; }
+.pager a { font-weight: 600; text-decoration: none; }
+.filters .row { align-items: flex-end; }
+.toolbar { display: flex; flex-wrap: wrap; gap: .6rem; margin: 0 0 1rem; }
 """
 
 PAGE = """<!doctype html>
-<html><head><meta charset="utf-8"><title>Approval panel</title>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>%(title)s</title>
 <link rel="stylesheet" href="/style.css"></head>
 <body>%(nav)s
-%(banner)s
+<main class="wrap">%(banner)s
 %(body)s
-</body></html>"""
+</main></body></html>"""
 
 WILDCARD_DIALOG = """
-<div class="warn">
 %(psl_alert)s
+<div class="warn">
 <h1>%(pattern)s &mdash; approve every subdomain?</h1>
 <p>This approves every name under <strong>%(base)s</strong>, including ones
 that don't exist yet.</p>
@@ -87,24 +269,35 @@ you're approving them too. Anyone could host a server at
 <p>Services like this include hosting platforms, cloud storage, and tunnelling
 providers. Safe wildcards are ones where a single company owns every
 subdomain &mdash; a vendor's own API or package registry.</p>
-<form method="post" action="/add">
+</div>
+<div class="card">
+<h2>Safer: add the exact hostname instead</h2>
+<p class="meta">If you're not certain, enter the exact hostname instead:</p>
+<form method="post" action="/add" class="row">
 <input type="hidden" name="csrf" value="%(csrf)s">
-<p>If you're not certain, enter the exact hostname instead:
-<input type="text" name="pattern" placeholder="host.%(base)s"> and
-<button name="mode" value="exact">add the exact hostname</button></p>
+<label class="field"><span>Hostname</span>
+<input type="text" name="pattern" placeholder="host.%(base)s"
+ autocapitalize="none" autocorrect="off" spellcheck="false"></label>
+<button name="mode" value="exact" class="btn-primary">Add the exact hostname</button>
 </form>
-<form method="post" action="/add-confirm">
+</div>
+<div class="card">
+<h2>Or approve the wildcard</h2>
+<form method="post" action="/add-confirm" class="stack">
 <input type="hidden" name="csrf" value="%(csrf)s">
 <input type="hidden" name="pattern" value="%(pattern)s">
-<p>Or, to approve the wildcard, type <strong>%(base)s</strong> to confirm:
-<input type="text" name="typed" autocomplete="off"></p>
-<p>Expiry:
-<label><input type="radio" name="scope" value="24h" checked> 24 hours
-(default &mdash; wildcards are usually added under pressure, and urgency is
-exactly when permanent decisions should not be made)</label><br>
-<label><input type="radio" name="scope" value="permanent"> permanent
-(deliberate second choice)</label></p>
-<p><button>Approve wildcard</button></p>
+<label class="field"><span>Type <strong>%(base)s</strong> to confirm</span>
+<input type="text" name="typed" autocomplete="off" autocapitalize="none"
+ autocorrect="off" spellcheck="false"></label>
+<div class="field"><span>Expiry</span>
+<div class="choices">
+<label><input type="radio" name="scope" value="24h" checked> 24 hours</label>
+<label><input type="radio" name="scope" value="permanent"> permanent</label>
+</div>
+<p class="meta">24 hours is the default &mdash; wildcards are usually added
+under pressure, and urgency is exactly when permanent decisions should not
+be made. Permanent is the deliberate second choice.</p></div>
+<div class="actions"><button class="btn-deny">Approve wildcard</button></div>
 </form>
 </div>
 """
@@ -118,6 +311,38 @@ def _fmt_ts(ts):
 
 def esc(value):
     return html.escape(str(value if value is not None else ""), quote=True)
+
+
+def _table(headers, rows):
+    """A table that collapses into labelled cards on narrow screens: each
+    cell carries its column header as data-label for the stylesheet to show.
+    Cells arrive as already-escaped HTML; an empty header marks the actions
+    column, which gets no label."""
+    head = "".join("<th>%s</th>" % esc(h) for h in headers)
+    out = ['<div class="table-wrap"><table class="collapse"><thead><tr>%s'
+           "</tr></thead><tbody>" % head]
+    for cells in rows:
+        out.append("<tr>" + "".join(
+            '<td data-label="%s"%s>%s</td>'
+            % (esc(h), ' class="cell-actions"' if not h else "", cell)
+            for h, cell in zip(headers, cells)
+        ) + "</tr>")
+    out.append("</tbody></table></div>")
+    return "".join(out)
+
+
+def _strong(value):
+    """A host/pattern cell; empty stays empty so the stacked layout can
+    hide the row instead of printing a label with nothing after it."""
+    return '<span class="pattern">%s</span>' % esc(value) if value else ""
+
+
+def _muted(value):
+    return '<span class="meta">%s</span>' % esc(value) if value else ""
+
+
+NAV_LINKS = (("/", "Pending"), ("/allowlist", "Allowlist"),
+             ("/activity", "Activity"), ("/add", "Add"))
 
 
 class PanelApp:
@@ -469,6 +694,11 @@ class PanelApp:
             db.log_event(self.conn, self.textlog, ts, "enforcement_resume",
                          None, None, "operator", None, "enforcement resumed")
 
+    def pending_count(self):
+        return self.conn.execute(
+            "SELECT COUNT(*) AS n FROM requests WHERE status = 'pending'"
+        ).fetchone()["n"]
+
     def compromise_banner(self):
         trips = self.conn.execute(
             "SELECT COUNT(*) AS n FROM decisions WHERE event = 'rate_limit_trip'"
@@ -511,16 +741,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_header(key, value)
         self.end_headers()
 
-    def _page(self, body, status=200, nav=True):
-        navigation = (
-            '<nav><a href="/">Pending</a><a href="/allowlist">Allowlist</a>'
-            '<a href="/activity">Activity</a><a href="/add">Add</a>'
-            '<form method="post" action="/logout">'
+    def _nav(self):
+        current = urllib.parse.urlparse(self.path).path
+        pending = self.app.pending_count()
+        links = []
+        for href, label in NAV_LINKS:
+            count = (' <span class="count">%d</span>' % pending
+                     if href == "/" and pending else "")
+            links.append(
+                '<a href="%s"%s>%s%s</a>'
+                % (href, ' class="active" aria-current="page"'
+                   if href == current else "", label, count)
+            )
+        return (
+            '<header class="top"><div class="top-inner">'
+            '<a class="brand" href="/">agent<span>-</span>filter</a>'
+            "<nav>%s</nav>"
+            '<form method="post" action="/logout" class="logout">'
             '<input type="hidden" name="csrf" value="%s">'
-            "<button>Log out</button></form></nav>" % esc(self._csrf())
-            if nav
-            else ""
+            '<button class="btn-ghost btn-small">Log out</button></form>'
+            "</div></header>" % ("".join(links), esc(self._csrf()))
         )
+
+    def _page(self, body, status=200, nav=True, title="Approval panel"):
+        navigation = self._nav() if nav else ""
         banner = self.app.compromise_banner() if nav else ""
         if nav:
             state = db.pause_state(self.app.conn)
@@ -540,7 +784,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 )
         self._headers(status)
         self.wfile.write(
-            (PAGE % {"nav": navigation, "banner": banner, "body": body}).encode()
+            (PAGE % {"nav": navigation, "banner": banner, "body": body,
+                     "title": esc(title)}).encode()
         )
 
     def _session(self):
@@ -615,17 +860,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
             }, content_type="text/plain; charset=utf-8")
             self.wfile.write(data)
         else:
-            self._page("<p>Not found.</p>", 404)
+            self._page('<p class="error">Not found.</p>', 404, title="Not found")
 
     def _login_page(self, error=""):
         body = (
-            "<h1>Approval panel</h1>%s"
+            '<div class="login"><div class="card">'
+            "<h1>Approval panel</h1>"
+            '<p class="meta">agent-filter &middot; reachable only over your'
+            " tailnet</p>%s"
             '<form method="post" action="/login">'
-            '<p><input type="password" name="password" autofocus></p>'
-            "<p><button>Log in</button></p></form>"
-            % ("<p class='error'>%s</p>" % esc(error) if error else "")
+            '<label class="field"><span>Password</span>'
+            '<input type="password" name="password" autofocus'
+            ' autocomplete="current-password"></label>'
+            '<button class="btn-primary">Log in</button></form>'
+            "</div></div>"
+            % ('<p class="error">%s</p>' % esc(error) if error else "")
         )
-        self._page(body, nav=False)
+        self._page(body, nav=False, title="Log in — Approval panel")
 
     def _pending_page(self):
         rows = db.pending_requests(self.app.conn)
@@ -639,22 +890,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 else '<p class="meta">no rationale supplied</p>'
             )
             cards.append(
-                '<div class="card"><span class="host">%s:%d</span>'
+                '<article class="card"><h2 class="host">%s:%d</h2>'
                 '<p class="meta">origin %s &middot; first seen %s &middot;'
                 " asked %d time(s)</p>%s"
-                '<form method="post" action="/decide">'
+                '<form method="post" action="/decide" class="decide">'
                 '<input type="hidden" name="csrf" value="%s">'
                 '<input type="hidden" name="req_id" value="%d">'
-                "<p>Scope: <select name=\"scope\">"
+                '<div class="row">'
+                '<label class="field"><span>Deny reason <small>(optional,'
+                " shown to the agent)</small></span>"
+                '<input type="text" name="reason" placeholder="e.g. not for'
+                ' this project"></label>'
+                '<button name="action" value="deny" class="btn-deny">Deny'
+                "</button></div>"
+                '<div class="row">'
+                '<label class="field narrow"><span>Scope</span>'
+                '<select name="scope">'
                 '<option value="once">once</option>'
                 '<option value="session">session</option>'
                 '<option value="24h" selected>24h</option>'
-                '<option value="permanent">permanent</option></select> '
-                '<button name="action" value="approve">Approve</button> '
-                '<input type="text" name="reason" placeholder="deny reason'
-                ' (optional, shown to the agent)"> '
-                '<button name="action" value="deny">Deny</button></p>'
-                "</form></div>"
+                '<option value="permanent">permanent</option></select></label>'
+                '<button name="action" value="approve" class="btn-approve">'
+                "Approve</button></div>"
+                "</form></article>"
                 % (
                     esc(row["host"]), row["port"], esc(row["origin"]),
                     _fmt_ts(row["first_seen"]), row["count"], rationale,
@@ -663,7 +921,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             )
         self._page(
             "<h1>Pending requests</h1>"
-            + ("".join(cards) or "<p>Queue is empty.</p>")
+            + ("".join(cards)
+               or '<div class="card empty">Queue is empty. Nothing is'
+                  " waiting for a decision.</div>"),
+            title="Pending — Approval panel",
         )
 
     PAGE_SIZES = (50, 100, 250, 500)
@@ -707,12 +968,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             )
         )
         controls = (
-            '<form method="get" action="/allowlist"><p>'
-            '<input type="text" name="q" value="%s" placeholder="filter by'
-            ' pattern or description"> Origin: <select name="src">%s</select>'
-            ' Per page: <select name="size">%s</select> '
-            '<button>Apply</button> <span class="meta">%d matching'
-            " entr%s</span></p></form>"
+            '<form method="get" action="/allowlist" class="card filters">'
+            '<div class="row">'
+            '<label class="field"><span>Filter</span>'
+            '<input type="text" name="q" value="%s" placeholder="pattern or'
+            ' description" autocapitalize="none" autocorrect="off"></label>'
+            '<label class="field narrow"><span>Origin</span>'
+            '<select name="src">%s</select></label>'
+            '<label class="field narrow"><span>Per page</span>'
+            '<select name="size">%s</select></label>'
+            '<button class="btn-primary">Apply</button></div></form>'
             % (
                 esc(q),
                 src_options,
@@ -721,48 +986,53 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     % (s, " selected" if s == size else "", s)
                     for s in self.PAGE_SIZES
                 ),
-                total,
-                "y" if total == 1 else "ies",
             )
         )
-        nav_parts = []
+        nav_parts = ['<span class="meta">%d matching entr%s &middot; page %d'
+                     " of %d</span>" % (total, "y" if total == 1 else "ies",
+                                        page, pages)]
+        steps = []
         if page > 1:
-            nav_parts.append(
+            steps.append(
                 '<a href="%s">&laquo; Previous</a>' % esc(link(page - 1))
             )
-        nav_parts.append('<span class="meta">page %d of %d</span>' % (page, pages))
         if page < pages:
-            nav_parts.append('<a href="%s">Next &raquo;</a>' % esc(link(page + 1)))
-        pager = "<p>%s</p>" % " &middot; ".join(nav_parts)
+            steps.append('<a href="%s">Next &raquo;</a>' % esc(link(page + 1)))
+        if steps:
+            nav_parts.append("<span>%s</span>" % " &nbsp;&middot;&nbsp; ".join(steps))
+        pager = '<div class="pager">%s</div>' % "".join(nav_parts)
 
         origin_label = {"default": "catalog", "starter": "default",
                         "manual": "you", "approval": "you (approved)"}
-        body = ["<h1>Active allowlist</h1>", controls, pager,
-                "<table><tr><th>Pattern</th><th>Kind"
-                "</th><th>Port</th><th>Description</th><th>Scope</th>"
-                "<th>Expires</th><th>Origin</th><th></th></tr>"]
+        table_rows = []
         for row in rows:
-            flag = ' <span class="wildcard">WILDCARD</span>' \
+            flag = ' <span class="badge wildcard">WILDCARD</span>' \
                 if row["kind"] == "wildcard" else ""
-            body.append(
-                "<tr><td>%s%s</td><td>%s</td><td>%d</td>"
-                '<td class="meta">%s</td><td>%s</td><td>%s'
-                '</td><td>%s</td><td><form method="post" action="/revoke">'
+            table_rows.append((
+                '<span class="pattern">%s</span>%s' % (esc(row["pattern"]), flag),
+                esc(row["kind"]),
+                str(row["port"]),
+                _muted(row["note"]),
+                esc(row["scope"]),
+                _fmt_ts(row["expires_at"]),
+                esc(origin_label.get(row["source"], row["source"])),
+                '<form method="post" action="/revoke">'
                 '<input type="hidden" name="csrf" value="%s">'
                 '<input type="hidden" name="entry_id" value="%d">'
-                "<button>Revoke</button></form></td></tr>"
-                % (
-                    esc(row["pattern"]), flag, esc(row["kind"]), row["port"],
-                    esc(row["note"] or ""), esc(row["scope"]),
-                    _fmt_ts(row["expires_at"]),
-                    esc(origin_label.get(row["source"], row["source"])),
-                    esc(self._csrf()), row["id"],
-                )
-            )
-        body.append("</table>")
-        body.append(pager)
+                '<button class="btn-deny btn-small">Revoke</button></form>'
+                % (esc(self._csrf()), row["id"]),
+            ))
+        body = ["<h1>Active allowlist</h1>", controls, pager]
+        if table_rows:
+            body.append(_table(
+                ("Pattern", "Kind", "Port", "Description", "Scope",
+                 "Expires", "Origin", ""), table_rows,
+            ))
+            body.append(pager)
+        else:
+            body.append('<div class="card empty">No entries match.</div>')
         body.append(self._list_tools_section())
-        self._page("".join(body))
+        self._page("".join(body), title="Allowlist — Approval panel")
 
     def _activity_page(self):
         rows = db.recent_events(self.app.conn)
@@ -780,27 +1050,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "<h2>Auto-rejections</h2><p class='meta'>These never reach the"
                 " queue. A burst — variations circling one domain, or odd"
                 " encodings — is an attacker feeling out the boundary, not"
-                " normal work.</p><table><tr><th>Host</th><th>Code</th>"
-                "<th>Count</th></tr>"
+                " normal work.</p>"
             )
-            for (host, code), count in sorted(grouped.items()):
-                body.append(
-                    "<tr><td>%s</td><td>%s</td><td>%d</td></tr>"
-                    % (esc(host), esc(code), count)
-                )
-            body.append("</table>")
-        body.append("<h2>Events</h2><table><tr><th>Time</th><th>Event</th>"
-                    "<th>Host</th><th>Code</th><th>Detail</th></tr>")
-        for row in lines[:100]:
-            body.append(
-                "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
-                % (
-                    _fmt_ts(row["ts"]), esc(row["event"]), esc(row["host"]),
-                    esc(row["reason_code"]), esc(row["detail"]),
-                )
-            )
-        body.append("</table>")
-        self._page("".join(body))
+            body.append(_table(
+                ("Host", "Code", "Count"),
+                [('<span class="pattern">%s</span>' % esc(host), esc(code),
+                  str(count))
+                 for (host, code), count in sorted(grouped.items())],
+            ))
+        body.append("<h2>Events</h2>")
+        if lines:
+            body.append(_table(
+                ("Time", "Event", "Host", "Code", "Detail"),
+                [(_fmt_ts(row["ts"]), esc(row["event"]),
+                  _strong(row["host"]), esc(row["reason_code"]),
+                  _muted(row["detail"]))
+                 for row in lines[:100]],
+            ))
+        else:
+            body.append('<div class="card empty">No events yet.</div>')
+        self._page("".join(body), title="Activity — Approval panel")
 
     def _psl_alert(self, base):
         """The prominent warning shown when a wildcard base is or spans a
@@ -831,33 +1100,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _add_page(self, error=""):
         body = (
-            "<h1>Add to allowlist</h1>"
+            "<h1>Add to allowlist</h1>%s"
+            '<div class="card">'
             "<p class='meta'>Judge every wildcard by one question: can a"
             " stranger sign up and get their own name under this domain?"
-            " If yes, approving the wildcard approves them too.</p>%s"
-            '<form method="post" action="/add">'
+            " If yes, approving the wildcard approves them too.</p>"
+            '<form method="post" action="/add" class="stack">'
             '<input type="hidden" name="csrf" value="%s">'
-            '<p><input type="text" name="pattern"'
-            ' placeholder="host.example.com or *.example.com"></p>'
-            '<p><input type="text" name="note" maxlength="255" size="60"'
-            ' placeholder="one-line description of what this host is'
-            ' (optional)"></p>'
-            "<p>Scope: <select name=\"scope\">"
+            '<label class="field"><span>Hostname</span>'
+            '<input type="text" name="pattern" autocapitalize="none"'
+            ' autocorrect="off" spellcheck="false" inputmode="url"'
+            ' placeholder="host.example.com or *.example.com"></label>'
+            '<label class="field"><span>Description <small>(optional)</small>'
+            '</span><input type="text" name="note" maxlength="255"'
+            ' placeholder="one line on what this host is"></label>'
+            '<div class="row"><label class="field narrow"><span>Scope</span>'
+            '<select name="scope">'
             '<option value="once">once</option>'
             '<option value="session">session</option>'
             '<option value="24h">24h</option>'
-            '<option value="permanent" selected>permanent</option></select> '
-            "<button>Add</button></p></form>"
-            % ("<p class='error'>%s</p>" % esc(error) if error else "",
+            '<option value="permanent" selected>permanent</option></select>'
+            '</label><button class="btn-primary">Add</button></div>'
+            "</form></div>"
+            % ('<p class="error">%s</p>' % esc(error) if error else "",
                esc(self._csrf()))
         )
         self._page(
-            body + self._default_list_section() + self._pause_section()
+            body + self._default_list_section() + self._pause_section(),
+            title="Add — Approval panel",
         )
 
     def _pause_section(self):
         return (
-            '<div class="card"><h1>Pause enforcement</h1>'
+            '<div class="card"><h2>Pause enforcement</h2>'
             "<p class='meta'>Opens the gate to every valid destination for a"
             " fixed window — for install bursts that would otherwise mean"
             " approving hosts under pressure. The firewall stays up, every"
@@ -865,43 +1140,47 @@ class Handler(http.server.BaseHTTPRequestHandler):
             " denied requests keep queueing for review afterwards. A banner"
             " shows on every page until the window ends; the monthly review"
             " checks the log for pause stamps.</p>"
-            '<form method="post" action="/pause">'
+            '<form method="post" action="/pause" class="stack">'
             '<input type="hidden" name="csrf" value="%s">'
-            '<p><label><input type="radio" name="minutes" value="15" checked>'
-            " 15 minutes</label> "
+            '<div class="choices">'
+            '<label><input type="radio" name="minutes" value="15" checked>'
+            " 15 minutes</label>"
             '<label><input type="radio" name="minutes" value="60">'
-            " 60 minutes</label> "
+            " 60 minutes</label>"
             '<label><input type="radio" name="minutes" value="off">'
-            " off until turned back on</label> "
-            "<button>Pause</button></p></form></div>"
+            " off until turned back on</label></div>"
+            '<div class="actions"><button class="btn-deny">Pause</button>'
+            "</div></form></div>"
             % esc(self._csrf())
         )
 
     def _import_result_page(self, result):
         body = [
             "<h1>Import finished</h1>",
-            "<p>Added <strong>%d</strong> &middot; already present"
-            " <strong>%d</strong> &middot; rejected <strong>%d</strong>.</p>"
+            '<div class="card"><p>Added <strong>%d</strong> &middot; already'
+            " present <strong>%d</strong> &middot; rejected <strong>%d"
+            "</strong>.</p>"
             % (result["added"], result["present"], len(result["rejected"])),
         ]
         if result["rejected"]:
             body.append(
                 "<p class='meta'>Nothing existing was touched. Each rejected"
-                " line and the reason:</p>"
-                "<table><tr><th>Line</th><th>Entry</th><th>Reason</th></tr>"
+                " line and the reason:</p></div>"
             )
-            for lineno, entry, reason in result["rejected"]:
-                body.append(
-                    "<tr><td>%d</td><td>%s</td><td>%s</td></tr>"
-                    % (lineno, esc(entry), esc(reason))
-                )
-            body.append("</table>")
+            body.append(_table(
+                ("Line", "Entry", "Reason"),
+                [(str(lineno), '<span class="pattern">%s</span>' % esc(entry),
+                  esc(reason))
+                 for lineno, entry, reason in result["rejected"]],
+            ))
+        else:
+            body.append("</div>")
         body.append('<p><a href="/allowlist">Back to the allowlist</a></p>')
-        self._page("".join(body))
+        self._page("".join(body), title="Import — Approval panel")
 
     def _list_tools_section(self):
         return (
-            '<div class="card"><h1>Export, import, erase</h1>'
+            '<div class="card"><h2>Export, import, erase</h2>'
             "<p class='meta'><a href=\"/export\">Export the current list"
             "</a> as plain text: one entry per line with its description."
             " To import, paste a list below — one <code>host [port]"
@@ -910,16 +1189,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             " the list, use Erase first, then import. Refused lines"
             " (wildcards, blocked or invalid hosts) are reported with"
             " reasons, not silently dropped.</p>"
-            '<form method="post" action="/import">'
+            '<form method="post" action="/import" class="stack">'
             '<input type="hidden" name="csrf" value="%s">'
-            '<p><textarea name="text" rows="6" cols="70"'
-            ' placeholder="api.example.com 443  # example service"></textarea></p>'
-            "<p><button>Import</button></p></form>"
-            '<form method="post" action="/erase">'
+            '<textarea name="text" rows="6" autocapitalize="none"'
+            ' autocorrect="off" spellcheck="false"'
+            ' placeholder="api.example.com 443  # example service"></textarea>'
+            '<div class="actions"><button class="btn-primary">Import</button>'
+            "</div></form>"
+            '<form method="post" action="/erase" class="actions">'
             '<input type="hidden" name="csrf" value="%s">'
-            "<p><button>Erase the entire allowlist&hellip;</button>"
-            " <span class='meta'>asks for confirmation first</span></p></form>"
-            "</div>"
+            '<button class="btn-deny">Erase the entire allowlist&hellip;'
+            "</button><span class='meta'>asks for confirmation first</span>"
+            "</form></div>"
             % (esc(self._csrf()), esc(self._csrf()))
         )
 
@@ -928,14 +1209,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         groups = self.app.catalog_groups()
         csrf = esc(self._csrf())
         body = [
-            '<div class="card"><h1>Shipped lists</h1>'
+            '<div class="card"><h2>Shipped lists</h2>'
             "<p class='meta'><strong>Default list</strong> — the handful of"
             " hosts this guide's own flows need, loaded automatically at"
             " install (origin &ldquo;default&rdquo;). After an erase, this"
             " button is the restore; it only adds what is missing.</p>"
-            '<form method="post" action="/load-shipped">'
+            '<form method="post" action="/load-shipped" class="toolbar">'
             '<input type="hidden" name="csrf" value="%s">'
-            "<p><button>Load the default list</button></p></form>" % csrf,
+            "<button>Load the default list</button></form>" % csrf,
             "<p class='meta'><strong>Catalog</strong> — a curated set of"
             " documentation, package-registry, reference, and open-data"
             " hosts an agent commonly needs to read. Exact hostnames only —"
@@ -952,17 +1233,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
             )
         else:
             body.append(
-                '<form method="post" action="/import-defaults">'
+                '<form method="post" action="/import-defaults" class="toolbar">'
                 '<input type="hidden" name="csrf" value="%s">'
-                "<p><button>Load the whole catalog (%d hosts)</button>"
-                "</p></form>" % (csrf, available)
+                "<button>Load the whole catalog (%d hosts)</button>"
+                "</form>" % (csrf, available)
             )
         if active:
             body.append(
-                '<form method="post" action="/remove-defaults">'
+                '<form method="post" action="/remove-defaults" class="toolbar">'
                 '<input type="hidden" name="csrf" value="%s">'
-                "<p><button>Remove all catalog entries"
-                " (%d active)</button></p></form>" % (csrf, active)
+                '<button class="btn-deny">Remove all catalog entries'
+                " (%d active)</button></form>" % (csrf, active)
             )
         for i, (title, entries) in enumerate(groups):
             hosts = " &middot; ".join(
@@ -972,11 +1253,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             body.append(
                 "<details><summary><strong>%s</strong> &mdash; %d hosts"
                 "</summary>"
-                '<form method="post" action="/import-catalog-group">'
+                '<form method="post" action="/import-catalog-group"'
+                ' class="toolbar">'
                 '<input type="hidden" name="csrf" value="%s">'
                 '<input type="hidden" name="group" value="%d">'
-                "<p><button>Load this group</button></p></form>"
-                "<p class='meta'>%s</p></details>"
+                '<button class="btn-small">Load this group</button></form>'
+                "<p class='meta hosts'>%s</p></details>"
                 % (esc(title), len(entries), csrf, i, hosts)
             )
         body.append("</div>")
@@ -1077,10 +1359,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 " the history, and the Add page's <strong>load</strong>"
                 " buttons restore the shipped lists afterwards.</p>"
                 '<p><a href="/allowlist">Cancel</a></p></div>'
-                '<form method="post" action="/erase-confirm">'
+                '<form method="post" action="/erase-confirm" class="actions">'
                 '<input type="hidden" name="csrf" value="%s">'
-                "<p><button>Erase all %d entries</button></p></form>"
-                % (total, esc(self._csrf()), total)
+                '<button class="btn-deny">Erase all %d entries</button></form>'
+                % (total, esc(self._csrf()), total),
+                title="Erase — Approval panel",
             )
         elif path == "/erase-confirm":
             self.app.erase_all_entries()
@@ -1098,7 +1381,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.app.resume_enforcement()
             self._headers(303, {"Location": "/add"})
         else:
-            self._page("<p>Not found.</p>", 404)
+            self._page('<p class="error">Not found.</p>', 404, title="Not found")
 
     def _do_login(self, form):
         if PasswordHasher is None:
