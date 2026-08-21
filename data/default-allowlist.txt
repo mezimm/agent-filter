@@ -1434,6 +1434,9 @@ registry.ollama.ai
 # per-tenant hosts (Azure resources, Modal sandboxes) likewise stay out; the
 # pending queue names them on first use.
 
+# Nous Research GitHub Pages (project/docs pages an agent may read).
+nousresearch.github.io
+
 api.githubcopilot.com
 chatgpt.com
 auth.openai.com
