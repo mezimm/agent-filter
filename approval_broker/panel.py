@@ -1438,20 +1438,38 @@ def resolve_bind_ip(value, runner=subprocess.run):
     through and keep the historical checks in serve()."""
     if value != "auto":
         return value
-    last_error = None
+    # Why each candidate failed, so the log can distinguish "Tailscale is not
+    # running" from "the CLI refuses to answer this process" — the second
+    # happens on macOS when a service manager, not a terminal, is the caller,
+    # and no amount of retrying fixes it.
+    failures = []
     for candidate in TS_CLI_CANDIDATES:
         try:
             proc = runner(
                 [candidate, "ip", "-4"],
                 capture_output=True, text=True, timeout=10,
             )
-        except (OSError, subprocess.TimeoutExpired):
+        except FileNotFoundError:
+            continue  # simply not installed at this path
+        except OSError as exc:
+            failures.append((candidate, str(exc)))
             continue
+        except subprocess.TimeoutExpired:
+            failures.append((candidate, "no reply within 10s"))
+            continue
+        said = ((proc.stderr or "") + (proc.stdout or "")).strip().splitlines()
+        said = said[0].strip()[:200] if said else ""
         if proc.returncode != 0:
+            failures.append((
+                candidate,
+                "exit %s%s" % (proc.returncode,
+                               ", said %r" % said if said else ""),
+            ))
             continue
         ip = (proc.stdout or "").strip().splitlines()
         ip = ip[0].strip() if ip else ""
         if not ip:
+            failures.append((candidate, "answered with nothing"))
             continue
         try:
             addr = ipaddress.ip_address(ip)
@@ -1459,8 +1477,9 @@ def resolve_bind_ip(value, runner=subprocess.run):
             # Not an address at all: the macOS App Store CLI prints a
             # sentence such as "The Tailscale GUI failed to start" with exit
             # status 0 when the app is not running. That is "no answer yet",
-            # not a wrong address, so keep looking and say so below.
-            last_error = ip
+            # not a wrong address, so keep looking and report it below.
+            failures.append(
+                (candidate, "said %r, which is not an address" % ip))
             continue
         if addr in _CGNAT:
             return ip
@@ -1468,11 +1487,24 @@ def resolve_bind_ip(value, runner=subprocess.run):
             "panel.bind_ip auto: %r from the tailscale CLI is not a"
             " Tailscale (100.64/10) address; refusing to bind it" % ip
         )
-    hint = (" (the CLI said: %r)" % last_error) if last_error else ""
+    # Every path usually fails the same way; say it once with a count
+    # rather than six near-identical clauses per retry, every ten seconds.
+    grouped = {}
+    for candidate, reason in failures:
+        grouped.setdefault(reason, []).append(candidate)
+    parts = [
+        "%s: %s" % (cands[0], reason) if len(cands) == 1
+        else "%s (and %d other path%s): %s"
+        % (cands[0], len(cands) - 1, "" if len(cands) == 2 else "s", reason)
+        for reason, cands in grouped.items()
+    ]
     raise SystemExit(
-        "panel.bind_ip auto: no tailscale CLI answered with an address%s;"
-        " is the Tailscale app running and signed in? (retrying via the"
-        " service manager is expected until it is)" % hint
+        "panel.bind_ip auto: no tailscale CLI gave this machine's Tailscale"
+        " IPv4. Is the Tailscale app running and signed in? Tried \u2014 %s."
+        " If the same command works in your terminal but not here, the CLI is"
+        " refusing this process rather than being down: put the literal 100.x"
+        " address in panel.bind_ip and no lookup is needed."
+        % ("; ".join(parts) or "no tailscale CLI found on this machine")
     )
 
 

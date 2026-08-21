@@ -94,8 +94,19 @@ if [[ -z "$TAILSCALE_IP" ]]; then
   echo "and simply retries until Tailscale is up." >&2
   TAILSCALE_IP="<your-tailscale-ip>"
 fi
+# A literal bind_ip is the documented recovery for a Tailscale CLI that
+# answers a terminal but not a background service, so an update must not
+# quietly put "auto" back and take the panel down again.
+KEEP_BIND=""
+if [[ -f "$ETC/config.toml" ]]; then
+  KEEP_BIND="$(sed -n 's/^bind_ip = "\(.*\)"$/\1/p' "$ETC/config.toml" | head -n1)"
+fi
 sed "s/@TAILSCALE_IP@/$TAILSCALE_IP/" "$SRC/macos/config-macos.toml" \
   > "$ETC/config.toml"
+if [[ -n "$KEEP_BIND" && "$KEEP_BIND" != "auto" ]]; then
+  sed -i '' "s|^bind_ip = .*|bind_ip = \"$KEEP_BIND\"|" "$ETC/config.toml"
+  echo "note: kept the bind_ip = \"$KEEP_BIND\" already in your config."
+fi
 chmod 0644 "$ETC/config.toml"
 
 echo "== Dummy certificate for Squid's ssl-bump port"
