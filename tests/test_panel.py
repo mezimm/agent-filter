@@ -16,7 +16,9 @@ from argon2 import PasswordHasher
 from approval_broker import db
 from approval_broker.broker import Broker
 from approval_broker.config import Config
-from approval_broker.panel import LOGIN_MAX_FAILURES, Handler, PanelApp, serve
+from approval_broker.panel import (
+    LOGIN_MAX_FAILURES, TS_CLI_CANDIDATES, Handler, PanelApp, serve,
+)
 
 REPO = os.path.join(os.path.dirname(__file__), "..")
 PASSWORD = "correct horse"
@@ -661,6 +663,22 @@ class ResolveBindIP(unittest.TestCase):
         runner = self._runner(stdout="192.168.1.5\n")
         with self.assertRaises(SystemExit):
             resolve_bind_ip("auto", runner)
+
+    def test_auto_treats_cli_error_text_as_not_running(self):
+        # The App Store CLI exits 0 with a sentence when the app is down;
+        # that must read as "Tailscale not running", not as a bad address.
+        from approval_broker.panel import resolve_bind_ip
+        runner = self._runner(
+            stdout="The Tailscale GUI failed to start: The operation"
+                   " couldn\u2019t be completed. (Tailscale.CLIError error 3.)\n")
+        with self.assertRaises(SystemExit) as ctx:
+            resolve_bind_ip("auto", runner)
+        message = str(ctx.exception)
+        self.assertIn("is the Tailscale app running", message)
+        self.assertIn("GUI failed to start", message)
+        self.assertNotIn("refusing to bind", message)
+        # every candidate was tried, none accepted as an address
+        self.assertEqual(len(runner.calls), len(TS_CLI_CANDIDATES))
 
     def test_auto_fails_loudly_when_no_cli_answers(self):
         from approval_broker.panel import resolve_bind_ip

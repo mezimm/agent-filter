@@ -1438,6 +1438,7 @@ def resolve_bind_ip(value, runner=subprocess.run):
     through and keep the historical checks in serve()."""
     if value != "auto":
         return value
+    last_error = None
     for candidate in TS_CLI_CANDIDATES:
         try:
             proc = runner(
@@ -1453,18 +1454,25 @@ def resolve_bind_ip(value, runner=subprocess.run):
         if not ip:
             continue
         try:
-            if ipaddress.ip_address(ip) in _CGNAT:
-                return ip
+            addr = ipaddress.ip_address(ip)
         except ValueError:
-            pass
+            # Not an address at all: the macOS App Store CLI prints a
+            # sentence such as "The Tailscale GUI failed to start" with exit
+            # status 0 when the app is not running. That is "no answer yet",
+            # not a wrong address, so keep looking and say so below.
+            last_error = ip
+            continue
+        if addr in _CGNAT:
+            return ip
         raise SystemExit(
             "panel.bind_ip auto: %r from the tailscale CLI is not a"
             " Tailscale (100.64/10) address; refusing to bind it" % ip
         )
+    hint = (" (the CLI said: %r)" % last_error) if last_error else ""
     raise SystemExit(
-        "panel.bind_ip auto: no working tailscale CLI answered; is"
-        " Tailscale installed and signed in? (retrying via the service"
-        " manager is expected until it is)"
+        "panel.bind_ip auto: no tailscale CLI answered with an address%s;"
+        " is the Tailscale app running and signed in? (retrying via the"
+        " service manager is expected until it is)" % hint
     )
 
 
