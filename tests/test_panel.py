@@ -545,6 +545,32 @@ class EndToEnd(PanelHarness):
         self.assertLessEqual(abs(row["expires_at"] - (db.now() + 3600)), 60)
 
 
+class DatabaseStartup(unittest.TestCase):
+    """A database the service cannot write must name itself at startup."""
+
+    def test_readonly_database_exits_with_a_readable_reason(self):
+        # A database from an older release is missing this version's tables,
+        # so startup must create one — the write that a database the service
+        # cannot own fails on. (A fully up-to-date file needs no write and
+        # would open even read-only, which is why the table is dropped here.)
+        tmp = tempfile.mkdtemp()
+        path = os.path.join(tmp, "broker.db")
+        conn = db.open_db(path)
+        conn.execute("DROP TABLE panel_sessions")
+        conn.commit()
+        conn.close()
+        os.chmod(path, 0o444)
+        try:
+            with self.assertRaises(SystemExit) as ctx:
+                db.open_db(path)
+        finally:
+            os.chmod(path, 0o644)
+        message = str(ctx.exception)
+        self.assertIn(path, message)
+        self.assertIn("readonly database", message)
+        self.assertIn("ownership", message)
+
+
 class ServeGuard(unittest.TestCase):
     def test_serve_refuses_loopback_and_unset(self):
         tmp = tempfile.mkdtemp()
