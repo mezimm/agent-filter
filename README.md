@@ -24,6 +24,7 @@ One thing agent-filter cannot do alone: the agent's machine must be wired so thi
 - Export, paste-import (refused lines are listed with reasons), and a confirm-guarded erase.
 - A red warning when a wildcard would approve strangers' sites (`*.github.io` and friends).
 - Every decision stamped in an activity log a five-minute monthly review can read.
+- A panel that fits a phone: approve from wherever you are, and a login lasts 30 days across panel restarts.
 
 ## Install
 
